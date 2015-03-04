@@ -16,10 +16,11 @@
  */
 package org.apache.nifi;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.Iterator;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
+import org.apache.maven.artifact.Artifact;
+import org.apache.maven.artifact.handler.ArtifactHandler;
+import org.apache.maven.artifact.handler.manager.ArtifactHandlerManager;
 import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -30,20 +31,10 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.plugins.annotations.Component;
-import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
-import org.eclipse.aether.DefaultRepositorySystemSession;
-import org.eclipse.aether.RepositorySystem;
-import org.eclipse.aether.artifact.Artifact;
-import org.eclipse.aether.artifact.DefaultArtifact;
-import org.eclipse.aether.collection.CollectRequest;
-import org.eclipse.aether.collection.CollectResult;
-import org.eclipse.aether.collection.DependencyCollectionException;
-import org.eclipse.aether.graph.Dependency;
-import org.eclipse.aether.graph.DependencyNode;
-import org.eclipse.aether.graph.DependencyVisitor;
-import org.eclipse.aether.repository.LocalRepository;
-import org.eclipse.aether.repository.RemoteRepository;
-import org.eclipse.aether.util.artifact.JavaScopes;
+import org.apache.maven.shared.dependency.tree.DependencyNode;
+import org.apache.maven.shared.dependency.tree.DependencyTreeBuilder;
+import org.apache.maven.shared.dependency.tree.DependencyTreeBuilderException;
+import org.apache.maven.shared.dependency.tree.traversal.DependencyNodeVisitor;
 
 /**
  * Packages the current project as an Apache NiFi Archive (NAR).
@@ -56,187 +47,109 @@ import org.eclipse.aether.util.artifact.JavaScopes;
 @Mojo(name = "provided-nar-dependencies", defaultPhase = LifecyclePhase.PACKAGE, threadSafe = false, requiresDependencyResolution = ResolutionScope.RUNTIME)
 public class NarProvidedDependenciesMojo extends AbstractMojo {
 
+    private static final String NAR = "nar";
+    
     /**
      * The Maven project.
      */
-    @Parameter(defaultValue = "${project}", readonly = true, required = true)
+    @Parameter( defaultValue = "${project}", readonly = true, required = true )
     private MavenProject project;
 
     /**
-     * If specified, this parameter will cause the dependency tree to be written
-     * using the specified format. Currently supported format are:
-     * <code>tree</code> or <code>pom</code>.
+     * The dependency tree builder to use for verbose output.
+     */
+    @Component(hint = "default")
+    private DependencyTreeBuilder dependencyTreeBuilder;
+
+    /***
+     * The {@link ArtifactHandlerManager} into which any extension {@link ArtifactHandler} instances should have been
+     * injected when the extensions were loaded.
+     */
+    @Component
+    private ArtifactHandlerManager artifactHandlerManager;
+    
+    /**
+     * If specified, this parameter will cause the dependency tree to be written using the specified format. Currently
+     * supported format are: <code>tree</code> or <code>pom</code>.
      */
     @Parameter(property = "mode", defaultValue = "tree")
     private String mode;
-    
-    /**
-     * Skip plugin execution completely.
-     */
-    @Parameter(property = "skip", defaultValue = "false")
-    private boolean skip;
 
     /**
      * The local artifact repository.
      */
-    @Parameter(defaultValue = "${localRepository}", readonly = true)
+    @Parameter( defaultValue = "${localRepository}", readonly = true )
     private ArtifactRepository localRepository;
 
-    /**
-     * The project's remote repositories to use for the resolution of plugins and their dependencies.
-     *
-     * @parameter default-value="${project.remotePluginRepositories}"
-     * @readonly
-     */
-    @Component
-    private List<RemoteRepository> remoteRepos;
-    
-    /**
-     * The entry point to Aether, i.e. the component doing all the work.
-     *
-     * @component
-     */
-    @Component
-    private RepositorySystem repoSystem;
- 
     /*
      * @see org.apache.maven.plugin.Mojo#execute()
      */
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
-        if (isSkip()) {
-            getLog().info("Skipping plugin execution");
-            return;
-        }
-
         try {
-            // configure the session
-            final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
-            final LocalRepository localRepo = new LocalRepository(localRepository.getBasedir());
-            session.setLocalRepositoryManager(repoSystem.newLocalRepositoryManager(session, localRepo));
-
-            final Artifact artifact = new DefaultArtifact(project.getArtifact().toString());
-
-            final CollectRequest collectRequest = new CollectRequest();
-            collectRequest.setRoot(new Dependency(artifact, JavaScopes.COMPILE));
-            collectRequest.setRepositories(remoteRepos);
-
-            final CollectResult collectResult = repoSystem.collectDependencies(session, collectRequest);
-            
-            if ("tree".equalsIgnoreCase(mode)) {
-                collectResult.getRoot().accept(new TreeWriter());
-            } else if ("pom".equalsIgnoreCase(mode)) {
-                collectResult.getRoot().accept(new PomWriter());
-            }
-        } catch (final DependencyCollectionException dre) {
-            throw new MojoExecutionException("Cannot build project dependency tree", dre);
-        }
-    }
-    
-    private boolean visitChildren(final Deque<DependencyNode> hierarchy) {
-        if (hierarchy.size() == 1) {
-            return true;
-        } else if (hierarchy.size() == 2) {
-            return "nar".equals(hierarchy.peekFirst().getArtifact().getExtension());
-        } else {
-            return false;
-        }
-    }
-    
-    private boolean visitSiblings(final Deque<DependencyNode> hierarchy) {
-        if (hierarchy.size() == 2) {
-            return "nar".equals(hierarchy.peekFirst().getArtifact().getExtension());
-        } else {
-            return false;
-        }
-    }
-    
-    private class TreeWriter implements DependencyVisitor {
-        private final Deque<DependencyNode> hierarchy = new ArrayDeque<>();
-        
-        private boolean isLastChild(final DependencyNode parent, final DependencyNode child) {
-            return parent != null && parent.getChildren().indexOf(child) == parent.getChildren().size() - 1;
-        }
-        
-        @Override
-        public boolean visitEnter(DependencyNode node) {
-            // get the current parent for use later
-            final DependencyNode parent = hierarchy.peek();
-            
-            // add this node
-            hierarchy.push(node);
-            
-            // build the padding
-            final StringBuilder pad = new StringBuilder();
-            final Iterator<DependencyNode> iter = hierarchy.descendingIterator();
-            
-            // walk through the current hierarchy and add bars as appropriate
-            // to properly show where the node originates
-//            DependencyNode currentParent = iter.next();
-//            while (iter.hasNext()) {
-//                final DependencyNode currentNode = iter.next();
-//                
-//                if (!isLastChild(currentParent, currentNode)) {
-//                    pad.append("|  ");
-//                } else {
-//                    pad.append("   ");
-//                }
-//                
-//                currentParent = currentNode;
-//            }
-            
-            for (int i = 0; i < hierarchy.size() - 1; i++) {
-                pad.append("   ");
+            // find the nar dependency
+            Artifact narArtifact = null;
+            for (final Artifact artifact : project.getDependencyArtifacts()) {
+                if (NAR.equals(artifact.getType())) {
+                    // ensure the project doesn't have two nar dependencies
+                    if (narArtifact != null) {
+                        throw new MojoExecutionException("Project can only have one NAR dependency.");
+                    }
+                    
+                    // record the nar dependency
+                    narArtifact = artifact;
+                }
             }
             
-            // if this is the last child use \ instead of +
-            if (isLastChild(parent, node)) {
-                pad.append("\\- ");
-            } else {
-                pad.append("+- ");
+            // ensure there is a nar dependency
+            if (narArtifact == null) {
+                throw new MojoExecutionException("Project does not have any NAR dependencies.");
             }
             
-            // log it
-            getLog().info(pad + node.toString());
+            // get the artifact handler for excluding dependencies
+            final ArtifactHandler narHandler = excludesDependencies(narArtifact);
+            narArtifact.setArtifactHandler(narHandler);
             
-            return visitChildren(hierarchy);
-        }
+            // nar artifacts by nature includes dependencies, however this prevents the
+            // transitive dependencies from printing using tools like dependency:tree.
+            // here we are overriding the artifact handler for all nars so the 
+            // dependencies can be listed. this is important because nar dependencies
+            // will be used as the parent classloader for this nar and seeing what
+            // dependencies are provided is critical.
+            final Map<String, ArtifactHandler> narHandlerMap = new HashMap<>();
+            narHandlerMap.put(NAR, narHandler);
+            artifactHandlerManager.addHandlers(narHandlerMap); 
 
-        @Override
-        public boolean visitLeave(DependencyNode node) {
-            hierarchy.pop();
-            
-            return visitSiblings(hierarchy);
-        }
-    }
-    
-    public class PomWriter implements DependencyVisitor {
-        private final Deque<DependencyNode> hierarchy = new ArrayDeque<>();
-        
-        @Override
-        public boolean visitEnter(DependencyNode node) {
-            hierarchy.push(node);
-            
-            final Artifact artifact = node.getArtifact();
+            // get the dependency tree
+            final DependencyNode root = dependencyTreeBuilder.buildDependencyTree(project, localRepository, null);
 
-            if (!"nar".equals(artifact.getExtension())) {
-                System.out.println("<dependency>");
-                System.out.println("    <groupId>" + artifact.getGroupId() + "</groupId>");
-                System.out.println("    <artifactId>" + artifact.getArtifactId() + "</artifactId>");
-                System.out.println("</dependency>");
+            // only show the tree for the provided nar dependencies
+            DependencyNode narDependency = null;
+            for (final DependencyNode dependency : root.getChildren()) {
+                if (narArtifact.equals(dependency.getArtifact())) {
+                    narDependency = dependency;
+                    break;
+                }
             }
-
-            return visitChildren(hierarchy);
-        }
-
-        @Override
-        public boolean visitLeave(DependencyNode node) {
-            hierarchy.pop();
             
-            return visitSiblings(hierarchy);
+            // ensure the nar dependency is found
+            if (narDependency == null) {
+                throw new MojoExecutionException("Unable to find NAR dependency.");
+            }
+            
+            // write the appropriate output
+            if ("tree".equals(mode)) {
+                getLog().info("--- Provided NAR Dependencies ---\n\n" + narDependency.toString());
+            } else if ("pom".equals(mode)) {
+                final PomWriter out = new PomWriter();
+                narDependency.accept(out);
+                getLog().info("--- Provided NAR Dependencies ---\n\n" + out.toString());
+            }
+        } catch (DependencyTreeBuilderException exception) {
+            throw new MojoExecutionException("Cannot build project dependency tree", exception);
         }
     }
-    
+
     /**
      * Gets the Maven project used by this mojo.
      *
@@ -246,11 +159,74 @@ public class NarProvidedDependenciesMojo extends AbstractMojo {
         return project;
     }
 
-    public boolean isSkip() {
-        return skip;
+    private ArtifactHandler excludesDependencies(final Artifact artifact) {
+        final ArtifactHandler orig = artifact.getArtifactHandler();
+        
+        return new ArtifactHandler() {
+            @Override
+            public String getExtension() {
+                return orig.getExtension();
+            }
+
+            @Override
+            public String getDirectory() {
+                return orig.getDirectory();
+            }
+
+            @Override
+            public String getClassifier() {
+                return orig.getClassifier();
+            }
+
+            @Override
+            public String getPackaging() {
+                return orig.getPackaging();
+            }
+
+            // mark dependencies has excluded so they will appear in tree listing
+            
+            @Override
+            public boolean isIncludesDependencies() {
+                return false;
+            }
+
+            @Override
+            public String getLanguage() {
+                return orig.getLanguage();
+            }
+
+            @Override
+            public boolean isAddedToClasspath() {
+                return orig.isAddedToClasspath();
+            }
+        };
     }
 
-    public void setSkip(boolean skip) {
-        this.skip = skip;
+    private class PomWriter implements DependencyNodeVisitor {
+        private final StringBuilder output = new StringBuilder();
+        
+        @Override
+        public boolean visit(DependencyNode node) {
+            final Artifact artifact = node.getArtifact();
+
+            if (!NAR.equals(artifact.getType())) {
+                output.append("<dependency>\n");
+                output.append("    <groupId>").append(artifact.getGroupId()).append("</groupId>\n");
+                output.append("    <artifactId>").append(artifact.getArtifactId()).append("</artifactId>\n");
+                output.append("</dependency>\n");
+            }
+
+            return true;
+        }
+
+        @Override
+        public boolean endVisit(DependencyNode node) {
+            return true;
+        }
+        
+        @Override
+        public String toString() {
+            return output.toString();
+        }
     }
 }
