@@ -16,6 +16,8 @@
  */
 package org.apache.nifi;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.maven.artifact.Artifact;
@@ -31,10 +33,16 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.plugins.annotations.Component;
+import org.apache.maven.project.DefaultProjectBuildingRequest;
+import org.apache.maven.project.ProjectBuilder;
+import org.apache.maven.project.ProjectBuildingException;
+import org.apache.maven.project.ProjectBuildingRequest;
+import org.apache.maven.project.ProjectBuildingResult;
 import org.apache.maven.shared.dependency.tree.DependencyNode;
 import org.apache.maven.shared.dependency.tree.DependencyTreeBuilder;
 import org.apache.maven.shared.dependency.tree.DependencyTreeBuilderException;
 import org.apache.maven.shared.dependency.tree.traversal.DependencyNodeVisitor;
+import org.eclipse.aether.RepositorySystemSession;
 
 /**
  * Packages the current project as an Apache NiFi Archive (NAR).
@@ -52,7 +60,7 @@ public class NarProvidedDependenciesMojo extends AbstractMojo {
     /**
      * The Maven project.
      */
-    @Parameter( defaultValue = "${project}", readonly = true, required = true )
+    @Parameter(defaultValue = "${project}", readonly = true, required = true)
     private MavenProject project;
 
     /**
@@ -68,6 +76,9 @@ public class NarProvidedDependenciesMojo extends AbstractMojo {
     @Component
     private ArtifactHandlerManager artifactHandlerManager;
     
+    @Component
+    private ProjectBuilder projectBuilder;
+    
     /**
      * If specified, this parameter will cause the dependency tree to be written using the specified format. Currently
      * supported format are: <code>tree</code> or <code>pom</code>.
@@ -78,9 +89,12 @@ public class NarProvidedDependenciesMojo extends AbstractMojo {
     /**
      * The local artifact repository.
      */
-    @Parameter( defaultValue = "${localRepository}", readonly = true )
+    @Parameter(defaultValue = "${localRepository}", readonly = true)
     private ArtifactRepository localRepository;
 
+    @Parameter(defaultValue = "${repositorySystemSession}", readonly = true)
+    private RepositorySystemSession repoSession;
+    
     /*
      * @see org.apache.maven.plugin.Mojo#execute()
      */
@@ -106,6 +120,11 @@ public class NarProvidedDependenciesMojo extends AbstractMojo {
                 throw new MojoExecutionException("Project does not have any NAR dependencies.");
             }
             
+            // build the project for the nar artifact
+            final ProjectBuildingRequest narRequest = new DefaultProjectBuildingRequest();
+            narRequest.setRepositorySession(repoSession);
+            final ProjectBuildingResult narResult = projectBuilder.build(narArtifact, narRequest);
+            
             // get the artifact handler for excluding dependencies
             final ArtifactHandler narHandler = excludesDependencies(narArtifact);
             narArtifact.setArtifactHandler(narHandler);
@@ -121,32 +140,26 @@ public class NarProvidedDependenciesMojo extends AbstractMojo {
             artifactHandlerManager.addHandlers(narHandlerMap); 
 
             // get the dependency tree
-            final DependencyNode root = dependencyTreeBuilder.buildDependencyTree(project, localRepository, null);
+            final DependencyNode root = dependencyTreeBuilder.buildDependencyTree(narResult.getProject(), localRepository, null);
 
-            // only show the tree for the provided nar dependencies
-            DependencyNode narDependency = null;
-            for (final DependencyNode dependency : root.getChildren()) {
-                if (narArtifact.equals(dependency.getArtifact())) {
-                    narDependency = dependency;
-                    break;
-                }
-            }
-            
-            // ensure the nar dependency is found
-            if (narDependency == null) {
-                throw new MojoExecutionException("Unable to find NAR dependency.");
-            }
-            
             // write the appropriate output
+            DependencyNodeVisitor visitor = null;
             if ("tree".equals(mode)) {
-                getLog().info("--- Provided NAR Dependencies ---\n\n" + narDependency.toString());
+                visitor = new TreeWriter();
             } else if ("pom".equals(mode)) {
-                final PomWriter out = new PomWriter();
-                narDependency.accept(out);
-                getLog().info("--- Provided NAR Dependencies ---\n\n" + out.toString());
+                visitor = new PomWriter();
             }
-        } catch (DependencyTreeBuilderException exception) {
-            throw new MojoExecutionException("Cannot build project dependency tree", exception);
+            
+            // ensure the mode was specified correctly
+            if (visitor == null) {
+                throw new MojoExecutionException("The specified mode is invalid. Supported options are 'tree' and 'pom'.");
+            }
+            
+            // visit and print the results
+            root.accept(visitor);
+            getLog().info("--- Provided NAR Dependencies ---\n\n" + visitor.toString());
+        } catch (DependencyTreeBuilderException | ProjectBuildingException e) {
+            throw new MojoExecutionException("Cannot build project dependency tree", e);
         }
     }
 
@@ -202,13 +215,60 @@ public class NarProvidedDependenciesMojo extends AbstractMojo {
         };
     }
 
+    private boolean isTest(final DependencyNode node) {
+        return "test".equals(node.getArtifact().getScope());
+    }
+    
+    private class TreeWriter implements DependencyNodeVisitor {
+        private final StringBuilder output = new StringBuilder();
+        private final Deque<DependencyNode> hierarchy = new ArrayDeque<>();
+        
+        @Override
+        public boolean visit(DependencyNode node) {
+            // add this node
+            hierarchy.push(node);
+
+            // don't print test deps, but still add to hierarchy as they will
+            // be removed in endVisit below
+            if (isTest(node)) {
+                return false;
+            }
+            
+            // build the padding
+            final StringBuilder pad = new StringBuilder();
+            for (int i = 0; i < hierarchy.size() - 1; i++) {
+                pad.append("   ");
+            }
+            pad.append("+- ");
+            
+            // log it
+            output.append(pad).append(node.toNodeString()).append("\n");
+            
+            return true;
+        }
+
+        @Override
+        public boolean endVisit(DependencyNode node) {
+            hierarchy.pop();
+            return true;
+        }
+        
+        @Override
+        public String toString() {
+            return output.toString();
+        }
+    }
+    
     private class PomWriter implements DependencyNodeVisitor {
         private final StringBuilder output = new StringBuilder();
         
         @Override
         public boolean visit(DependencyNode node) {
+            if (isTest(node)) {
+                return false;
+            }
+            
             final Artifact artifact = node.getArtifact();
-
             if (!NAR.equals(artifact.getType())) {
                 output.append("<dependency>\n");
                 output.append("    <groupId>").append(artifact.getGroupId()).append("</groupId>\n");
