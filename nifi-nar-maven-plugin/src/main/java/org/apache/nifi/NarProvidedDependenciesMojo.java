@@ -64,9 +64,29 @@ public class NarProvidedDependenciesMojo extends AbstractMojo {
     private MavenProject project;
 
     /**
+     * The local artifact repository.
+     */
+    @Parameter(defaultValue = "${localRepository}", readonly = true)
+    private ArtifactRepository localRepository;
+
+    /**
+     * The {@link RepositorySystemSession} used for obtaining the local and remote
+     * artifact repositories.
+     */
+    @Parameter(defaultValue = "${repositorySystemSession}", readonly = true)
+    private RepositorySystemSession repoSession;
+    
+    /**
+     * If specified, this parameter will cause the dependency tree to be written using the specified format. Currently
+     * supported format are: <code>tree</code> or <code>pom</code>.
+     */
+    @Parameter(property = "mode", defaultValue = "tree")
+    private String mode;
+    
+    /**
      * The dependency tree builder to use for verbose output.
      */
-    @Component(hint = "default")
+    @Component
     private DependencyTreeBuilder dependencyTreeBuilder;
 
     /***
@@ -76,24 +96,12 @@ public class NarProvidedDependenciesMojo extends AbstractMojo {
     @Component
     private ArtifactHandlerManager artifactHandlerManager;
     
+    /**
+     * The {@link ProjectBuilder} used to generate the {@link MavenProject} for the nar artifact the dependency
+     * tree is being generated for.
+     */
     @Component
     private ProjectBuilder projectBuilder;
-    
-    /**
-     * If specified, this parameter will cause the dependency tree to be written using the specified format. Currently
-     * supported format are: <code>tree</code> or <code>pom</code>.
-     */
-    @Parameter(property = "mode", defaultValue = "tree")
-    private String mode;
-
-    /**
-     * The local artifact repository.
-     */
-    @Parameter(defaultValue = "${localRepository}", readonly = true)
-    private ArtifactRepository localRepository;
-
-    @Parameter(defaultValue = "${repositorySystemSession}", readonly = true)
-    private RepositorySystemSession repoSession;
     
     /*
      * @see org.apache.maven.plugin.Mojo#execute()
@@ -172,6 +180,14 @@ public class NarProvidedDependenciesMojo extends AbstractMojo {
         return project;
     }
 
+    /**
+     * Creates a new ArtifactHandler for the specified Artifact that overrides the
+     * includeDependencies flag. When set, this flag prevents transitive dependencies
+     * from being printed in dependencies plugin.
+     * 
+     * @param artifact
+     * @return 
+     */
     private ArtifactHandler excludesDependencies(final Artifact artifact) {
         final ArtifactHandler orig = artifact.getArtifactHandler();
         
@@ -215,10 +231,19 @@ public class NarProvidedDependenciesMojo extends AbstractMojo {
         };
     }
 
+    /**
+     * Returns whether the specified dependency has test scope.
+     * 
+     * @param node
+     * @return 
+     */
     private boolean isTest(final DependencyNode node) {
         return "test".equals(node.getArtifact().getScope());
     }
     
+    /**
+     * A dependency visitor that builds a dependency tree.
+     */
     private class TreeWriter implements DependencyNodeVisitor {
         private final StringBuilder output = new StringBuilder();
         private final Deque<DependencyNode> hierarchy = new ArrayDeque<>();
@@ -259,6 +284,10 @@ public class NarProvidedDependenciesMojo extends AbstractMojo {
         }
     }
     
+    /**
+     * A dependency visitor that generates output that can be copied into 
+     * a pom's dependency management section.
+     */
     private class PomWriter implements DependencyNodeVisitor {
         private final StringBuilder output = new StringBuilder();
         
@@ -273,6 +302,8 @@ public class NarProvidedDependenciesMojo extends AbstractMojo {
                 output.append("<dependency>\n");
                 output.append("    <groupId>").append(artifact.getGroupId()).append("</groupId>\n");
                 output.append("    <artifactId>").append(artifact.getArtifactId()).append("</artifactId>\n");
+                output.append("    <version>").append(artifact.getVersion()).append("</version>\n");
+                output.append("    <scope>provided</scope>\n");
                 output.append("</dependency>\n");
             }
 
