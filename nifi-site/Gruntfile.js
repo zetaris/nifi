@@ -16,7 +16,7 @@ module.exports = function (grunt) {
             js: ['dist/js/'],
             css: ['dist/css/'],
             assets: ['dist/assets/*'],
-            generated: ['dist/docs'],
+            generated: ['git-work', 'dist/docs'],
             all: ['dist']
         },
         assemble: {
@@ -133,6 +133,15 @@ module.exports = function (grunt) {
                     }]
                 }
             },
+            branch: {
+                options: {
+                    questions: [{
+                            config: 'git.branch',
+                            type: 'input',
+                            message: 'Enter branch for generated documentation including guides, component, and REST API docs (leave blank for develop):'
+                    }]
+                }
+            },
             commit: {
                 options: {
                     questions: [{
@@ -170,6 +179,45 @@ module.exports = function (grunt) {
             }
         },
         exec: {
+            clone: {
+                command: function() {
+                    var branch = grunt.config('git.branch');
+                    if (branch === '') {
+                        branch = 'develop';
+                    }
+                    return 'git clone --depth 1 -b ' + branch + ' --single-branch http://git-wip-us.apache.org/repos/asf/incubator-nifi.git git-work';
+                },
+                stdout: true,
+                stderr: true
+            },
+            build: {
+                command: 'mvn clean package -DskipTests -q -T2',
+                cwd: 'git-work/nifi',
+                stdout: true,
+                stderr: true
+            },
+            startNiFi: {
+                // this didn't work because we're invoking NiFi directly and not using
+                // bootstrap to set up the env (where props are, etc)
+                command: 'mvn exec:java -Dexec.mainClass=org.apache.nifi.NiFi',
+                cwd: 'git-work/nifi/nifi-assembly',
+                stdout: true,
+                stderr: true
+            },
+            stopNiFi: {
+                command: function() {
+                    if (process.platform === 'win32') {
+                        return 'bin/nifi.bat stop';
+                    } else {
+                        return 'bin/nifi.sh stop';
+                    }
+                },
+                // need to figure out how to address the versions in the path... if we got 
+                // this working we would be able to use this approach to start nifi as well
+                cwd: 'git-work/nifi/nifi-assemble/target/nifi-*-bin/nifi-*/',
+                stdout: true,
+                stderr: true
+            },
             generateDocs: {
                 command: 'mvn clean package',
                 cwd: '../nifi/nifi-docs',
@@ -305,6 +353,19 @@ module.exports = function (grunt) {
     grunt.registerTask('img', ['newer:copy']);
     grunt.registerTask('css', ['clean:css', 'compass']);
     grunt.registerTask('js', ['clean:js', 'concat']);
+    
+    // this is here temporarily for testing purpose to avoid needing to generate the docs everytime
+    grunt.registerTask('nifi', ['exec:startNiFi']);
+    
+    // 1) clone desired branch
+    // 2) build
+    // 3) run nifi
+    // 4) (wait for it to start?)
+    // 5) wget documents (using the grunt wget task)
+    // 6) stop nifi
+    // 7) copy results of wget into dist/docs
+    // 8) perform any post processing (add version number, remove drop logo from rest docs, add google analytics
+    grunt.registerTask('generate-docs', ['clean:generated', 'prompt:branch', 'exec:clone', 'exec:build', 'exec:startNiFi']);
 //    grunt.registerTask('generate-docs', ['clean:generated', 'exec:generateDocs', 'exec:generateRestApiDocs', 'copy:generated', 'replace:addGoogleAnalytics', 'replace:moveTearDrop', 'replace:removeVersion']);
 
     grunt.registerTask('build', ['assemble', 'css', 'js', 'img', 'copy:dist']);
