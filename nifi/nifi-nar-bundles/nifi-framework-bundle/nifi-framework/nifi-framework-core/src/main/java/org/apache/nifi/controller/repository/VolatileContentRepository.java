@@ -627,7 +627,7 @@ public class VolatileContentRepository implements ContentRepository {
             final List<ContentClaim> destructable = new ArrayList<>(1000);
             while (true) {
                 destructable.clear();
-                claimManager.drainDestructableClaims(destructable, 1000, 5, TimeUnit.SECONDS);
+                claimManager.drainDestructableClaims(CONTAINER_NAME, destructable, 1000, 5, TimeUnit.SECONDS);
                 if (destructable.isEmpty()) {
                     return;
                 }

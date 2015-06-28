@@ -32,7 +32,7 @@ public class StandardContentClaimManager implements ContentClaimManager {
     private static final ConcurrentMap<ContentClaim, AtomicInteger> claimantCounts = new ConcurrentHashMap<>();
     private static final Logger logger = LoggerFactory.getLogger(StandardContentClaimManager.class);
 
-    private static final BlockingQueue<ContentClaim> destructableClaims = new LinkedBlockingQueue<>(50000);
+    private static final ConcurrentMap<String, BlockingQueue<ContentClaim>> destructableClaims = new ConcurrentHashMap<>();
 
     @Override
     public ContentClaim newContentClaim(final String container, final String section, final String id, final boolean lossTolerant) {
@@ -50,8 +50,8 @@ public class StandardContentClaimManager implements ContentClaimManager {
         }
 
         counter = new AtomicInteger(0);
-        AtomicInteger existingCounter = claimantCounts.putIfAbsent(claim, counter);
-        return (existingCounter == null) ? counter : existingCounter;
+        final AtomicInteger existingCounter = claimantCounts.putIfAbsent(claim, counter);
+        return existingCounter == null ? counter : existingCounter;
     }
 
     @Override
@@ -60,7 +60,7 @@ public class StandardContentClaimManager implements ContentClaimManager {
             return 0;
         }
         final AtomicInteger counter = claimantCounts.get(claim);
-        return (counter == null) ? 0 : counter.get();
+        return counter == null ? 0 : counter.get();
     }
 
     @Override
@@ -113,25 +113,41 @@ public class StandardContentClaimManager implements ContentClaimManager {
 
         logger.debug("Marking claim {} as destructable", claim);
         try {
-            while (!destructableClaims.offer(claim, 30, TimeUnit.MINUTES)) {
+            final BlockingQueue<ContentClaim> destructableQueue = getDestructableClaimQueue(claim.getContainer());
+            while (!destructableQueue.offer(claim, 30, TimeUnit.MINUTES)) {
             }
         } catch (final InterruptedException ie) {
         }
     }
 
+    private BlockingQueue<ContentClaim> getDestructableClaimQueue(final String container) {
+        BlockingQueue<ContentClaim> claimQueue = destructableClaims.get(container);
+        if (claimQueue == null) {
+            claimQueue = new LinkedBlockingQueue<>(10000);
+            final BlockingQueue<ContentClaim> existing = destructableClaims.putIfAbsent(container, claimQueue);
+            if (existing != null) {
+                claimQueue = existing;
+            }
+        }
+
+        return claimQueue;
+    }
+
     @Override
-    public void drainDestructableClaims(final Collection<ContentClaim> destination, final int maxElements) {
-        final int drainedCount = destructableClaims.drainTo(destination, maxElements);
+    public void drainDestructableClaims(final String container, final Collection<ContentClaim> destination, final int maxElements) {
+        final BlockingQueue<ContentClaim> destructableQueue = getDestructableClaimQueue(container);
+        final int drainedCount = destructableQueue.drainTo(destination, maxElements);
         logger.debug("Drained {} destructable claims to {}", drainedCount, destination);
     }
 
     @Override
-    public void drainDestructableClaims(final Collection<ContentClaim> destination, final int maxElements, final long timeout, final TimeUnit unit) {
+    public void drainDestructableClaims(final String container, final Collection<ContentClaim> destination, final int maxElements, final long timeout, final TimeUnit unit) {
         try {
-            final ContentClaim firstClaim = destructableClaims.poll(timeout, unit);
+            final BlockingQueue<ContentClaim> destructableQueue = getDestructableClaimQueue(container);
+            final ContentClaim firstClaim = destructableQueue.poll(timeout, unit);
             if (firstClaim != null) {
                 destination.add(firstClaim);
-                destructableClaims.drainTo(destination, maxElements - 1);
+                destructableQueue.drainTo(destination, maxElements - 1);
             }
         } catch (final InterruptedException e) {
         }

@@ -110,29 +110,30 @@ public interface ContentClaimManager {
 
     /**
      * Drains up to {@code maxElements} Content Claims from the internal queue
-     * of destructable content claims to the given {@code destination} so that
-     * they can be destroyed.
+     * of destructable content claims that belong to the given Content Repository container
+     * to the given {@code destination} so that they can be destroyed.
      *
+     * @param container the container to drain
      * @param destination to drain to
      * @param maxElements max items to drain
      */
-    void drainDestructableClaims(Collection<ContentClaim> destination, int maxElements);
+    void drainDestructableClaims(String container, Collection<ContentClaim> destination, int maxElements);
 
     /**
-     * Drains up to {@code maxElements} Content Claims from the internal queue
-     * of destructable content claims to the given {@code destination} so that
-     * they can be destroyed. If no ContentClaim is ready to be destroyed at
+     * Drains up to {@code maxElements} Content Claims that belong to the given Content Repository
+     * container from the internal queue of destructable content claims to the given {@code destination} so that they can be destroyed. If no ContentClaim is ready to be destroyed at
      * this time, will wait up to the specified amount of time before returning.
      * If, after the specified amount of time, there is still no ContentClaim
      * ready to be destroyed, the method will return without having added
      * anything to the given {@code destination}.
      *
+     * @param container the container to drain
      * @param destination to drain to
      * @param maxElements max items to drain
      * @param timeout maximum time to wait
      * @param unit unit of time to wait
      */
-    void drainDestructableClaims(Collection<ContentClaim> destination, int maxElements, long timeout, TimeUnit unit);
+    void drainDestructableClaims(String container, Collection<ContentClaim> destination, int maxElements, long timeout, TimeUnit unit);
 
     /**
      * Clears the manager's memory of any and all ContentClaims that it knows

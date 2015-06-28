@@ -163,9 +163,11 @@ public class WriteAheadFlowFileRepository implements FlowFileRepository, SyncLis
         return Files.getFileStore(flowFileRepositoryPath).getUsableSpace();
     }
 
+    private final AtomicLong updateCount = new AtomicLong(0L);
     @Override
     public void updateRepository(final Collection<RepositoryRecord> records) throws IOException {
-        updateRepository(records, alwaysSync);
+        final long updates = updateCount.incrementAndGet();
+        updateRepository(records, alwaysSync || updates % 100 == 0);
     }
 
     private void updateRepository(final Collection<RepositoryRecord> records, final boolean sync) throws IOException {
@@ -212,7 +214,7 @@ public class WriteAheadFlowFileRepository implements FlowFileRepository, SyncLis
             BlockingQueue<ContentClaim> claimQueue = claimsAwaitingDestruction.get(partitionKey);
             if (claimQueue == null) {
                 claimQueue = new LinkedBlockingQueue<>();
-                BlockingQueue<ContentClaim> existingClaimQueue = claimsAwaitingDestruction.putIfAbsent(partitionKey, claimQueue);
+                final BlockingQueue<ContentClaim> existingClaimQueue = claimsAwaitingDestruction.putIfAbsent(partitionKey, claimQueue);
                 if (existingClaimQueue != null) {
                     claimQueue = existingClaimQueue;
                 }
@@ -339,7 +341,7 @@ public class WriteAheadFlowFileRepository implements FlowFileRepository, SyncLis
                     final long start = System.nanoTime();
                     final int numRecordsCheckpointed = checkpoint();
                     final long end = System.nanoTime();
-                    final long millis = TimeUnit.MILLISECONDS.convert((end - start), TimeUnit.NANOSECONDS);
+                    final long millis = TimeUnit.MILLISECONDS.convert(end - start, TimeUnit.NANOSECONDS);
                     logger.info("Successfully checkpointed FlowFile Repository with {} records in {} milliseconds",
                             new Object[]{numRecordsCheckpointed, millis});
                 } catch (final IOException e) {
@@ -518,7 +520,7 @@ public class WriteAheadFlowFileRepository implements FlowFileRepository, SyncLis
             }
 
             final StandardFlowFileRecord.Builder ffBuilder = new StandardFlowFileRecord.Builder();
-            RepositoryRecord record = currentRecordStates.get(recordId);
+            final RepositoryRecord record = currentRecordStates.get(recordId);
             ffBuilder.id(recordId);
             if (record != null) {
                 ffBuilder.fromFlowFile(record.getCurrent());
@@ -785,16 +787,16 @@ public class WriteAheadFlowFileRepository implements FlowFileRepository, SyncLis
                 throw new EOFException();
             }
             if (firstValue == 0xff && secondValue == 0xff) {
-                int ch1 = in.read();
-                int ch2 = in.read();
-                int ch3 = in.read();
-                int ch4 = in.read();
+                final int ch1 = in.read();
+                final int ch2 = in.read();
+                final int ch3 = in.read();
+                final int ch4 = in.read();
                 if ((ch1 | ch2 | ch3 | ch4) < 0) {
                     throw new EOFException();
                 }
-                return ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4));
+                return (ch1 << 24) + (ch2 << 16) + (ch3 << 8) + ch4;
             } else {
-                return ((firstValue << 8) + (secondValue));
+                return (firstValue << 8) + secondValue;
             }
         }
 

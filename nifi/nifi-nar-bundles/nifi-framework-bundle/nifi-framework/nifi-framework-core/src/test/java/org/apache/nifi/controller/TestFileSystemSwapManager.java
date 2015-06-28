@@ -90,11 +90,11 @@ public class TestFileSystemSwapManager {
         }
 
         @Override
-        public void drainDestructableClaims(Collection<ContentClaim> destination, int maxElements) {
+        public void drainDestructableClaims(String container, Collection<ContentClaim> destination, int maxElements) {
         }
 
         @Override
-        public void drainDestructableClaims(Collection<ContentClaim> destination, int maxElements, long timeout, TimeUnit unit) {
+        public void drainDestructableClaims(String container, Collection<ContentClaim> destination, int maxElements, long timeout, TimeUnit unit) {
         }
 
         @Override

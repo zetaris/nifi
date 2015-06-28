@@ -46,8 +46,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -61,18 +59,17 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.controller.repository.claim.ContentClaim;
 import org.apache.nifi.controller.repository.claim.ContentClaimManager;
 import org.apache.nifi.controller.repository.io.SyncOnCloseOutputStream;
 import org.apache.nifi.engine.FlowEngine;
-import org.apache.nifi.util.file.FileUtils;
 import org.apache.nifi.stream.io.StreamUtils;
 import org.apache.nifi.util.FormatUtils;
 import org.apache.nifi.util.LongHolder;
 import org.apache.nifi.util.NiFiProperties;
 import org.apache.nifi.util.StopWatch;
-
-import org.apache.commons.lang3.StringUtils;
+import org.apache.nifi.util.file.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -91,16 +88,15 @@ public class FileSystemRepository implements ContentRepository {
     private final List<String> containerNames;
     private final AtomicLong index;
 
-    private final ScheduledExecutorService executor = new FlowEngine(4, "FileSystemRepository Workers", true);
-    private final ConcurrentMap<String, BlockingQueue<ContentClaim>> reclaimable = new ConcurrentHashMap<>();
     private final Map<String, ContainerState> containerStateMap = new HashMap<>();
 
     private final boolean archiveData;
     private final long maxArchiveMillis;
     private final Map<String, Long> minUsableContainerBytesForArchive = new HashMap<>();
     private final boolean alwaysSync;
-    private final ScheduledExecutorService containerCleanupExecutor;
 
+    private ScheduledExecutorService executor; // effectively final
+    private ScheduledExecutorService containerCleanupExecutor; // effectively final
     private ContentClaimManager contentClaimManager; // effectively final
 
     // Map of contianer to archived files that should be deleted next.
@@ -112,17 +108,16 @@ public class FileSystemRepository implements ContentRepository {
     public FileSystemRepository() throws IOException {
         final NiFiProperties properties = NiFiProperties.getInstance();
         // determine the file repository paths and ensure they exist
-        final Map<String, Path> fileRespositoryPaths = properties.getContentRepositoryPaths();
-        for (Path path : fileRespositoryPaths.values()) {
+        final Map<String, Path> fileRepositoryPaths = properties.getContentRepositoryPaths();
+        for (final Path path : fileRepositoryPaths.values()) {
             Files.createDirectories(path);
         }
 
-        this.containers = new HashMap<>(fileRespositoryPaths);
+        this.containers = new HashMap<>(fileRepositoryPaths);
         this.containerNames = new ArrayList<>(containers.keySet());
         index = new AtomicLong(0L);
 
         for (final String containerName : containerNames) {
-            reclaimable.put(containerName, new LinkedBlockingQueue<ContentClaim>(10000));
             archivedFiles.put(containerName, new LinkedBlockingQueue<ArchiveInfo>(100000));
         }
 
@@ -191,8 +186,6 @@ public class FileSystemRepository implements ContentRepository {
         this.alwaysSync = Boolean.parseBoolean(properties.getProperty("nifi.content.repository.always.sync"));
         LOG.info("Initializing FileSystemRepository with 'Always Sync' set to {}", alwaysSync);
         initializeRepository();
-
-        containerCleanupExecutor = new FlowEngine(containers.size(), "Cleanup FileSystemRepository Container", true);
     }
 
     @Override
@@ -201,11 +194,11 @@ public class FileSystemRepository implements ContentRepository {
 
         final NiFiProperties properties = NiFiProperties.getInstance();
 
-        final Map<String, Path> fileRespositoryPaths = properties.getContentRepositoryPaths();
+        final Map<String, Path> fileRepositoryPaths = properties.getContentRepositoryPaths();
 
-        executor.scheduleWithFixedDelay(new BinDestructableClaims(), 1, 1, TimeUnit.SECONDS);
-        for (int i = 0; i < fileRespositoryPaths.size(); i++) {
-            executor.scheduleWithFixedDelay(new ArchiveOrDestroyDestructableClaims(), 1, 1, TimeUnit.SECONDS);
+        executor = new FlowEngine(fileRepositoryPaths.size(), "FileSystemRepository Workers", true);
+        for (final String containerName : fileRepositoryPaths.keySet()) {
+            executor.scheduleWithFixedDelay(new ArchiveOrDestroyDestructableClaims(containerName), 1, 1, TimeUnit.SECONDS);
         }
 
         final String archiveCleanupFrequency = properties.getProperty(NiFiProperties.CONTENT_ARCHIVE_CLEANUP_FREQUENCY);
@@ -219,18 +212,31 @@ public class FileSystemRepository implements ContentRepository {
                 throw new RuntimeException("Invalid value set for property " + NiFiProperties.CONTENT_ARCHIVE_CLEANUP_FREQUENCY);
             }
         }
-        for (final Map.Entry<String, Path> containerEntry : containers.entrySet()) {
-            final String containerName = containerEntry.getKey();
-            final Path containerPath = containerEntry.getValue();
-            final Runnable cleanup = new DestroyExpiredArchiveClaims(containerName, containerPath);
-            containerCleanupExecutor.scheduleWithFixedDelay(cleanup, cleanupMillis, cleanupMillis, TimeUnit.MILLISECONDS);
+
+        // if we are not archiving, and nothing is currently archived, we don't need to start threads to cleanup the
+        // archive in the repository. Otherwise, we need to continually delete "expired" archived content claims.
+        if (oldestArchiveDate.get() > 0L || archiveData) {
+            containerCleanupExecutor = new FlowEngine(containers.size(), "Cleanup FileSystemRepository Container", true);
+            for (final Map.Entry<String, Path> containerEntry : containers.entrySet()) {
+                final String containerName = containerEntry.getKey();
+                final Path containerPath = containerEntry.getValue();
+                final Runnable cleanup = new DestroyExpiredArchiveClaims(containerName, containerPath);
+                containerCleanupExecutor.scheduleWithFixedDelay(cleanup, cleanupMillis, cleanupMillis, TimeUnit.MILLISECONDS);
+            }
+        } else {
+            containerCleanupExecutor = null;
         }
     }
 
     @Override
     public void shutdown() {
-        executor.shutdown();
-        containerCleanupExecutor.shutdown();
+        if (executor != null) {
+            executor.shutdown();
+        }
+
+        if (containerCleanupExecutor != null) {
+            containerCleanupExecutor.shutdown();
+        }
     }
 
     private static double getRatio(final String value) {
@@ -435,6 +441,10 @@ public class FileSystemRepository implements ContentRepository {
     }
 
     private Path getPath(final ContentClaim claim, final boolean verifyExists) throws ContentNotFoundException {
+        return getPath(claim, verifyExists, true);
+    }
+
+    private Path getPath(final ContentClaim claim, final boolean verifyExists, final boolean checkArchive) throws ContentNotFoundException {
         final Path containerPath = containers.get(claim.getContainer());
         if (containerPath == null) {
             if (verifyExists) {
@@ -448,7 +458,7 @@ public class FileSystemRepository implements ContentRepository {
         Path resolvedPath = containerPath.resolve(claim.getSection()).resolve(String.valueOf(claim.getId()));
 
         // If the data does not exist, create a Path that points to where the data would exist in the archive directory.
-        if (!Files.exists(resolvedPath)) {
+        if (checkArchive && !Files.exists(resolvedPath)) {
             resolvedPath = getArchivePath(claim);
         }
 
@@ -519,6 +529,10 @@ public class FileSystemRepository implements ContentRepository {
 
     @Override
     public boolean remove(final ContentClaim claim) {
+        return remove(claim, true);
+    }
+
+    private boolean remove(final ContentClaim claim, final boolean checkArchive) {
         if (claim == null) {
             return false;
         }
@@ -553,7 +567,7 @@ public class FileSystemRepository implements ContentRepository {
                 fos.getFD().sync();
             }
         } catch (final IOException ioe) {
-            remove(newClaim);
+            remove(newClaim, false);
             throw ioe;
         }
         return newClaim;
@@ -583,7 +597,7 @@ public class FileSystemRepository implements ContentRepository {
                     }
                 }
                 // don't add demarcator after the last claim
-                if (demarcator != null && demarcator.length > 0 && (++objectIndex < claims.size())) {
+                if (demarcator != null && demarcator.length > 0 && ++objectIndex < claims.size()) {
                     final ByteBuffer buffer = ByteBuffer.wrap(demarcator);
                     while (buffer.hasRemaining()) {
                         position += dest.write(buffer, position);
@@ -791,46 +805,46 @@ public class FileSystemRepository implements ContentRepository {
         contentClaimManager.purge();
     }
 
-    private class BinDestructableClaims implements Runnable {
-
-        @Override
-        public void run() {
-            try {
-                // Get all of the Destructable Claims and bin them based on their Container. We do this
-                // because the Container generally maps to a physical partition on the disk, so we want a few
-                // different threads hitting the different partitions but don't want multiple threads hitting
-                // the same partition.
-                final List<ContentClaim> toDestroy = new ArrayList<>();
-                while (true) {
-                    toDestroy.clear();
-                    contentClaimManager.drainDestructableClaims(toDestroy, 10000);
-                    if (toDestroy.isEmpty()) {
-                        return;
-                    }
-
-                    for (final ContentClaim claim : toDestroy) {
-                        final String container = claim.getContainer();
-                        final BlockingQueue<ContentClaim> claimQueue = reclaimable.get(container);
-
-                        try {
-                            while (true) {
-                                if (claimQueue.offer(claim, 10, TimeUnit.MINUTES)) {
-                                    break;
-                                } else {
-                                    LOG.warn("Failed to clean up {} because old claims aren't being cleaned up fast enough. "
-                                            + "This Content Claim will remain in the Content Repository until NiFi is restarted, at which point it will be cleaned up", claim);
-                                }
-                            }
-                        } catch (final InterruptedException ie) {
-                            LOG.warn("Failed to clean up {} because thread was interrupted", claim);
-                        }
-                    }
-                }
-            } catch (final Throwable t) {
-                LOG.error("Failed to cleanup content claims due to {}", t);
-            }
-        }
-    }
+    // private class BinDestructableClaims implements Runnable {
+    //
+    // @Override
+    // public void run() {
+    // try {
+    // // Get all of the Destructable Claims and bin them based on their Container. We do this
+    // // because the Container generally maps to a physical partition on the disk, so we want a few
+    // // different threads hitting the different partitions but don't want multiple threads hitting
+    // // the same partition.
+    // final List<ContentClaim> toDestroy = new ArrayList<>();
+    // while (true) {
+    // toDestroy.clear();
+    // contentClaimManager.drainDestructableClaims(toDestroy, 10000);
+    // if (toDestroy.isEmpty()) {
+    // return;
+    // }
+    //
+    // for (final ContentClaim claim : toDestroy) {
+    // final String container = claim.getContainer();
+    // final BlockingQueue<ContentClaim> claimQueue = reclaimable.get(container);
+    //
+    // try {
+    // while (true) {
+    // if (claimQueue.offer(claim, 10, TimeUnit.MINUTES)) {
+    // break;
+    // } else {
+    // LOG.warn("Failed to clean up {} because old claims aren't being cleaned up fast enough. "
+    // + "This Content Claim will remain in the Content Repository until NiFi is restarted, at which point it will be cleaned up", claim);
+    // }
+    // }
+    // } catch (final InterruptedException ie) {
+    // LOG.warn("Failed to clean up {} because thread was interrupted", claim);
+    // }
+    // }
+    // }
+    // } catch (final Throwable t) {
+    // LOG.error("Failed to cleanup content claims due to {}", t);
+    // }
+    // }
+    // }
 
     public static Path getArchivePath(final Path contentClaimPath) {
         final Path sectionPath = contentClaimPath.getParent();
@@ -1098,7 +1112,13 @@ public class FileSystemRepository implements ContentRepository {
         return oldestContainerArchive;
     }
 
+
     private class ArchiveOrDestroyDestructableClaims implements Runnable {
+        private final String containerName;
+
+        public ArchiveOrDestroyDestructableClaims(final String containerName) {
+            this.containerName = containerName;
+        }
 
         @Override
         public void run() {
@@ -1107,47 +1127,43 @@ public class FileSystemRepository implements ContentRepository {
                 while (true) {
                     // look through each of the binned queues of Content Claims
                     int successCount = 0;
-                    final List<ContentClaim> toRemove = new ArrayList<>();
-                    for (final Map.Entry<String, BlockingQueue<ContentClaim>> entry : reclaimable.entrySet()) {
-                        // drain the queue of all ContentClaims that can be destroyed for the given container.
-                        final String container = entry.getKey();
-                        final ContainerState containerState = containerStateMap.get(container);
+                    final List<ContentClaim> toRemove = new ArrayList<>(10);
+                    final ContainerState containerState = containerStateMap.get(containerName);
 
-                        toRemove.clear();
-                        entry.getValue().drainTo(toRemove);
-                        if (toRemove.isEmpty()) {
-                            continue;
-                        }
+                    toRemove.clear();
+                    contentClaimManager.drainDestructableClaims(containerName, toRemove, 10);
+                    if (toRemove.isEmpty()) {
+                        return;
+                    }
 
-                        // destroy each claim for this container
-                        final long start = System.nanoTime();
-                        for (final ContentClaim claim : toRemove) {
-                            if (archiveData) {
-                                try {
-                                    archive(claim);
-                                    containerState.incrementArchiveCount();
-                                    successCount++;
-                                } catch (final Exception e) {
-                                    LOG.warn("Failed to archive {} due to {}", claim, e.toString());
-                                    if (LOG.isDebugEnabled()) {
-                                        LOG.warn("", e);
-                                    }
-                                }
-                            } else {
-                                if (remove(claim)) {
-                                    successCount++;
+                    // destroy each claim for this container
+                    final long start = System.nanoTime();
+                    for (final ContentClaim claim : toRemove) {
+                        if (archiveData) {
+                            try {
+                                archive(claim);
+                                containerState.incrementArchiveCount();
+                                successCount++;
+                            } catch (final Exception e) {
+                                LOG.warn("Failed to archive {} due to {}", claim, e.toString());
+                                if (LOG.isDebugEnabled()) {
+                                    LOG.warn("", e);
                                 }
                             }
-                        }
-
-                        final long nanos = System.nanoTime() - start;
-                        final long millis = TimeUnit.NANOSECONDS.toMillis(nanos);
-
-                        if (successCount == 0) {
-                            LOG.debug("No ContentClaims archived/removed for Container {}", container);
                         } else {
-                            LOG.info("Successfully {} {} Content Claims for Container {} in {} millis", archiveData ? "archived" : "destroyed", successCount, container, millis);
+                            if (remove(claim, false)) {
+                                successCount++;
+                            }
                         }
+                    }
+
+                    final long nanos = System.nanoTime() - start;
+                    final long millis = TimeUnit.NANOSECONDS.toMillis(nanos);
+
+                    if (successCount == 0) {
+                        LOG.debug("No ContentClaims archived/removed for Container {}", containerName);
+                    } else {
+                        LOG.info("Successfully {} {} Content Claims for Container {} in {} millis", archiveData ? "archived" : "destroyed", successCount, containerName, millis);
                     }
 
                     // if we didn't destroy anything, we're done.
@@ -1210,7 +1226,7 @@ public class FileSystemRepository implements ContentRepository {
         @Override
         public void run() {
             try {
-                if (oldestArchiveDate.get() > (System.currentTimeMillis() - maxArchiveMillis)) {
+                if (oldestArchiveDate.get() > System.currentTimeMillis() - maxArchiveMillis) {
                     final Long minRequiredSpace = minUsableContainerBytesForArchive.get(containerName);
                     if (minRequiredSpace == null) {
                         return;
@@ -1245,7 +1261,7 @@ public class FileSystemRepository implements ContentRepository {
                 if (oldestContainerArchive < 0L) {
                     boolean updated;
                     do {
-                        long oldest = oldestArchiveDate.get();
+                        final long oldest = oldestArchiveDate.get();
                         if (oldestContainerArchive < oldest) {
                             updated = oldestArchiveDate.compareAndSet(oldest, oldestContainerArchive);
 
@@ -1298,7 +1314,7 @@ public class FileSystemRepository implements ContentRepository {
                     final long free = getContainerUsableSpace(containerName);
                     used = capacity - free;
                     bytesUsed = used;
-                } catch (IOException e) {
+                } catch (final IOException e) {
                     return false;
                 }
             }
@@ -1317,7 +1333,7 @@ public class FileSystemRepository implements ContentRepository {
                     try {
                         LOG.info("Unable to write to container {} due to archive file size constraints; waiting for archive cleanup", containerName);
                         condition.await();
-                    } catch (InterruptedException e) {
+                    } catch (final InterruptedException e) {
                     }
                 }
             } finally {
