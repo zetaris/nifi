@@ -60,7 +60,6 @@ import java.util.regex.Pattern;
 
 import org.apache.nifi.stream.io.BufferedInputStream;
 import org.apache.nifi.stream.io.BufferedOutputStream;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,6 +79,7 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
     private final Path partialPath;
     private final Path snapshotPath;
 
+    private final SortedSet<Path> basePaths;
     private final SerDe<T> serde;
     private final SyncListener syncListener;
     private final FileChannel lockChannel;
@@ -120,9 +120,9 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
      * @param syncListener the listener
      * @throws IOException if unable to initialize due to IO issue
      */
-    @SuppressWarnings("unchecked")
     public MinimalLockingWriteAheadLog(final SortedSet<Path> paths, final int partitionCount, final SerDe<T> serde, final SyncListener syncListener) throws IOException {
         this.syncListener = syncListener;
+        this.basePaths = paths;
 
         requireNonNull(paths);
         requireNonNull(serde);
@@ -131,7 +131,6 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
             throw new IllegalArgumentException("Paths must be non-empty");
         }
 
-        int existingPartitions = 0;
         for (final Path path : paths) {
             if (!Files.exists(path)) {
                 Files.createDirectories(path);
@@ -150,21 +149,6 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
             if (!file.canExecute()) {
                 throw new IOException("Path given [" + path + "] is not executable");
             }
-
-            final File[] children = file.listFiles();
-            if (children != null) {
-                for (final File child : children) {
-                    if (child.isDirectory() && child.getName().startsWith("partition-")) {
-                        existingPartitions++;
-                    }
-                }
-
-                if (existingPartitions != 0 && existingPartitions != partitionCount) {
-                    logger.warn("Constructing MinimalLockingWriteAheadLog with partitionCount={}, but the repository currently has "
-                            + "{} partitions; ignoring argument and proceeding with {} partitions",
-                            new Object[]{partitionCount, existingPartitions, existingPartitions});
-                }
-            }
         }
 
         this.basePath = paths.iterator().next();
@@ -176,19 +160,26 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
         lockChannel = new FileOutputStream(lockPath.toFile()).getChannel();
         lockChannel.lock();
 
-        partitions = new Partition[partitionCount];
+        partitions = createPartitions(partitionCount);
+    }
 
-        Iterator<Path> pathIterator = paths.iterator();
-        for (int i = 0; i < partitionCount; i++) {
+    private Partition<T>[] createPartitions(final int count) throws IOException {
+        @SuppressWarnings("unchecked")
+        final Partition<T>[] partitions = new Partition[count];
+
+        Iterator<Path> pathIterator = basePaths.iterator();
+        for (int i = 0; i < count; i++) {
             // If we're out of paths, create a new iterator to start over.
             if (!pathIterator.hasNext()) {
-                pathIterator = paths.iterator();
+                pathIterator = basePaths.iterator();
             }
 
             final Path partitionBasePath = pathIterator.next();
 
             partitions[i] = new Partition<>(partitionBasePath.resolve("partition-" + i), serde, i, getVersion());
         }
+
+        return partitions;
     }
 
     @Override
@@ -284,11 +275,30 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
             throw new IllegalStateException("Cannot recover records after updating the repository; must call recoverRecords first");
         }
 
+        int existingPartitionCount = 0;
         final long recoverStart = System.nanoTime();
         writeLock.lock();
         try {
+
             Long maxTransactionId = recoverFromSnapshot(recordMap);
-            recoverFromEdits(recordMap, maxTransactionId);
+
+            for (final Path basePath : basePaths) {
+                final File file = basePath.toFile();
+                final File[] children = file.listFiles();
+                if (children != null) {
+                    for (final File child : children) {
+                        if (child.isDirectory() && child.getName().startsWith("partition-")) {
+                            existingPartitionCount++;
+                        }
+                    }
+                }
+            }
+
+            final Partition<T>[] recoverablePartitions = createPartitions(existingPartitionCount);
+            recoverFromEdits(recordMap, recoverablePartitions, maxTransactionId);
+            for (final Partition<T> partition : recoverablePartitions) {
+                partition.close();
+            }
 
             for (final Partition<T> partition : partitions) {
                 final long transId = partition.getMaxRecoveredTransactionId();
@@ -308,8 +318,46 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
         logger.info("Successfully recovered {} records in {} milliseconds", recordMap.size(), recoveryMillis);
         checkpoint();
 
+        // If there are any partitions that have an index higher than the current desired number
+        // of partitions, delete the partition.
+        for (final Path basePath : basePaths) {
+            final File file = basePath.toFile();
+            final File[] children = file.listFiles();
+            if (children != null) {
+                for (final File child : children) {
+                    if (child.isDirectory() && child.getName().startsWith("partition-")) {
+                        final String indexName = child.getName().substring(10);
+                        final int index;
+                        try {
+                            index = Integer.parseInt(indexName);
+                        } catch (final NumberFormatException nfe) {
+                            // not a valid partition; ignore it and more on
+                            continue;
+                        }
+
+                        if (index >= partitions.length) {
+                            deleteRecursively(child);
+                        }
+                    }
+                }
+            }
+        }
+
         recovered = true;
         return recordMap.values();
+    }
+
+    private void deleteRecursively(final File file) {
+        if (file.isDirectory()) {
+            final File[] children = file.listFiles();
+            if (children != null) {
+                for (final File child : children) {
+                    deleteRecursively(child);
+                }
+            }
+        }
+
+        file.delete();
     }
 
     @Override
@@ -398,10 +446,11 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
      * before modification.
      *
      * @param modifiableRecordMap map
+     * @param partitions the partitions to use to recover records from
      * @param maxTransactionIdRestored index of max restored transaction
      * @throws IOException if unable to recover from edits
      */
-    private void recoverFromEdits(final Map<Object, T> modifiableRecordMap, final Long maxTransactionIdRestored) throws IOException {
+    private void recoverFromEdits(final Map<Object, T> modifiableRecordMap, final Partition<T>[] partitions, final Long maxTransactionIdRestored) throws IOException {
         final Map<Object, T> updateMap = new HashMap<>();
         final Map<Object, T> unmodifiableRecordMap = Collections.unmodifiableMap(modifiableRecordMap);
         final Map<Object, T> ignorableMap = new HashMap<>();
@@ -918,7 +967,7 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
 
         public Long getNextRecoverableTransactionId() throws IOException {
             while (true) {
-                DataInputStream recoveryStream = getRecoveryStream();
+                final DataInputStream recoveryStream = getRecoveryStream();
                 if (recoveryStream == null) {
                     return null;
                 }

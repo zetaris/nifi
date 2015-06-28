@@ -28,6 +28,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedSet;
@@ -146,6 +147,98 @@ public class TestMinimalLockingWriteAheadLog {
         assertTrue(record1);
         assertTrue(record2);
         assertTrue(record3);
+    }
+
+    @Test
+    public void testDecreasingPartitionCount() throws IOException {
+        final Path path = Paths.get("target/test-decrease-partition-count");
+        deleteRecursively(path.toFile());
+        assertTrue(path.toFile().mkdirs());
+
+        final DummyRecordSerde serde = new DummyRecordSerde();
+        final WriteAheadRepository<DummyRecord> repo = new MinimalLockingWriteAheadLog<>(path, 64, serde, null);
+        final Collection<DummyRecord> initialRecs = repo.recoverRecords();
+        assertTrue(initialRecs.isEmpty());
+
+        for (int i = 0; i < 64; i++) {
+            final DummyRecord record = new DummyRecord(String.valueOf(i), UpdateType.CREATE);
+            repo.update(Collections.singleton(record), false);
+        }
+
+        repo.shutdown();
+
+        for (int i = 0; i < 64; i++) {
+            final String partName = "partition-" + i;
+            final Path partitionPath = path.resolve(partName);
+            assertTrue(Files.exists(partitionPath));
+        }
+
+        // create a new repo with only 8 partitions, verify that the other partitions are deleted, but that all
+        // records still exist. We do this twice to ensure that after we checkpoint with only 8 partitions, we
+        // still recover all 64 records again the next time.
+        for (int recoverIndex = 0; recoverIndex < 2; recoverIndex++) {
+            final WriteAheadRepository<DummyRecord> recoverRepo = new MinimalLockingWriteAheadLog<>(path, 8, serde, null);
+            final Collection<DummyRecord> recovered = recoverRepo.recoverRecords();
+            assertEquals(64, recovered.size());
+
+            assertTrue(Files.exists(path));
+
+            for (int i = 0; i < 8; i++) {
+                final String partName = "partition-" + i;
+                final Path partitionPath = path.resolve(partName);
+                assertTrue(Files.exists(partitionPath));
+            }
+            for (int i = 8; i < 64; i++) {
+                final String partName = "partition-" + i;
+                final Path partitionPath = path.resolve(partName);
+                assertFalse(Files.exists(partitionPath));
+            }
+
+            recoverRepo.shutdown();
+        }
+    }
+
+    @Test
+    public void testIncreasingPartitionCount() throws IOException {
+        final Path path = Paths.get("target/test-decrease-partition-count");
+        deleteRecursively(path.toFile());
+        assertTrue(path.toFile().mkdirs());
+
+        final DummyRecordSerde serde = new DummyRecordSerde();
+        final WriteAheadRepository<DummyRecord> repo = new MinimalLockingWriteAheadLog<>(path, 8, serde, null);
+        final Collection<DummyRecord> initialRecs = repo.recoverRecords();
+        assertTrue(initialRecs.isEmpty());
+
+        for (int i = 0; i < 64; i++) {
+            final DummyRecord record = new DummyRecord(String.valueOf(i), UpdateType.CREATE);
+            repo.update(Collections.singleton(record), false);
+        }
+
+        repo.shutdown();
+
+        for (int i = 0; i < 8; i++) {
+            final String partName = "partition-" + i;
+            final Path partitionPath = path.resolve(partName);
+            assertTrue(Files.exists(partitionPath));
+        }
+
+        // create a new repo with 64 partitions. We do this twice to ensure that after we checkpoint with 64 partitions, we
+        // still recover all 64 records again the next time.
+        for (int recoverIndex = 0; recoverIndex < 2; recoverIndex++) {
+            final WriteAheadRepository<DummyRecord> recoverRepo = new MinimalLockingWriteAheadLog<>(path, 64, serde, null);
+            final Collection<DummyRecord> recovered = recoverRepo.recoverRecords();
+            assertEquals(64, recovered.size());
+
+            assertTrue(Files.exists(path));
+
+            for (int i = 0; i < 64; i++) {
+                final String partName = "partition-" + i;
+                final Path partitionPath = path.resolve(partName);
+                assertTrue(Files.exists(partitionPath));
+            }
+
+            recoverRepo.shutdown();
+        }
     }
 
     @Test
@@ -275,10 +368,10 @@ public class TestMinimalLockingWriteAheadLog {
             try {
                 int counter = 0;
                 for (final List<DummyRecord> list : records) {
-                    final boolean forceSync = (++counter == records.size());
+                    final boolean forceSync = ++counter == records.size();
                     repo.update(list, forceSync);
                 }
-            } catch (IOException e) {
+            } catch (final IOException e) {
                 Assert.fail("Failed to update: " + e.toString());
                 e.printStackTrace();
             }

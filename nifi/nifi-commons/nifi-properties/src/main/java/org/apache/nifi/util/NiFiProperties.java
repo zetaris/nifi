@@ -80,7 +80,8 @@ public class NiFiProperties extends Properties {
 
     // flowfile repository properties
     public static final String FLOWFILE_REPOSITORY_IMPLEMENTATION = "nifi.flowfile.repository.implementation";
-    public static final String FLOWFILE_REPOSITORY_ALWAYS_SYNC = "nifi.flowfile.repository.always.sync";
+    public static final String FLOWFILE_REPOSITORY_ALWAYS_SYNC = "nifi.flowfile.repository.always.sync";  // deprecated
+    public static final String FLOWFILE_REPOSITORY_UPDATES_BETWEEN_SYNCS = "nifi.flowfile.repository.updates.between.sync";
     public static final String FLOWFILE_REPOSITORY_DIRECTORY = "nifi.flowfile.repository.directory";
     public static final String FLOWFILE_REPOSITORY_PARTITIONS = "nifi.flowfile.repository.partitions";
     public static final String FLOWFILE_REPOSITORY_CHECKPOINT_INTERVAL = "nifi.flowfile.repository.checkpoint.interval";
@@ -282,7 +283,7 @@ public class NiFiProperties extends Properties {
     public File getFlowConfigurationFile() {
         try {
             return new File(getProperty(FLOW_CONFIGURATION_FILE));
-        } catch (Exception ex) {
+        } catch (final Exception ex) {
             return null;
         }
     }
@@ -290,7 +291,7 @@ public class NiFiProperties extends Properties {
     public File getFlowConfigurationFileDir() {
         try {
             return getFlowConfigurationFile().getParentFile();
-        } catch (Exception ex) {
+        } catch (final Exception ex) {
             return null;
         }
     }
@@ -396,7 +397,7 @@ public class NiFiProperties extends Properties {
      */
     public Path getTemplateDirectory() {
         final String strVal = getProperty(TEMPLATE_DIRECTORY);
-        return (strVal == null) ? DEFAULT_TEMPLATE_DIRECTORY : Paths.get(strVal);
+        return strVal == null ? DEFAULT_TEMPLATE_DIRECTORY : Paths.get(strVal);
     }
 
     /**
@@ -474,7 +475,7 @@ public class NiFiProperties extends Properties {
      */
     public boolean getNeedClientAuth() {
         boolean needClientAuth = true;
-        String rawNeedClientAuth = getProperty(SECURITY_NEED_CLIENT_AUTH);
+        final String rawNeedClientAuth = getProperty(SECURITY_NEED_CLIENT_AUTH);
         if ("false".equalsIgnoreCase(rawNeedClientAuth)) {
             needClientAuth = false;
         }
@@ -488,7 +489,7 @@ public class NiFiProperties extends Properties {
 
     public boolean getSupportNewAccountRequests() {
         boolean shouldSupport = true;
-        String rawShouldSupport = getProperty(SECURITY_SUPPORT_NEW_ACCOUNT_REQUESTS);
+        final String rawShouldSupport = getProperty(SECURITY_SUPPORT_NEW_ACCOUNT_REQUESTS);
         if ("false".equalsIgnoreCase(rawShouldSupport)) {
             shouldSupport = false;
         }
@@ -500,7 +501,7 @@ public class NiFiProperties extends Properties {
         Integer port = null;
         try {
             port = Integer.parseInt(getProperty(WEB_HTTP_PORT));
-        } catch (NumberFormatException nfe) {
+        } catch (final NumberFormatException nfe) {
         }
         return port;
     }
@@ -509,7 +510,7 @@ public class NiFiProperties extends Properties {
         Integer sslPort = null;
         try {
             sslPort = Integer.parseInt(getProperty(WEB_HTTPS_PORT));
-        } catch (NumberFormatException nfe) {
+        } catch (final NumberFormatException nfe) {
         }
         return sslPort;
     }
@@ -540,15 +541,15 @@ public class NiFiProperties extends Properties {
 
     public List<Path> getNarLibraryDirectories() {
 
-        List<Path> narLibraryPaths = new ArrayList<>();
+        final List<Path> narLibraryPaths = new ArrayList<>();
 
         // go through each property
-        for (String propertyName : stringPropertyNames()) {
+        for (final String propertyName : stringPropertyNames()) {
             // determine if the property is a nar library path
             if (StringUtils.startsWith(propertyName, NAR_LIBRARY_DIRECTORY_PREFIX)
                     || NAR_LIBRARY_DIRECTORY.equals(propertyName)) {
                 // attempt to resolve the path specified
-                String narLib = getProperty(propertyName);
+                final String narLib = getProperty(propertyName);
                 if (!StringUtils.isBlank(narLib)) {
                     narLibraryPaths.add(Paths.get(narLib));
                 }
@@ -615,10 +616,10 @@ public class NiFiProperties extends Properties {
 
     public InetSocketAddress getClusterProtocolMulticastAddress() {
         try {
-            String multicastAddress = getProperty(CLUSTER_PROTOCOL_MULTICAST_ADDRESS);
-            int multicastPort = Integer.parseInt(getProperty(CLUSTER_PROTOCOL_MULTICAST_PORT));
+            final String multicastAddress = getProperty(CLUSTER_PROTOCOL_MULTICAST_ADDRESS);
+            final int multicastPort = Integer.parseInt(getProperty(CLUSTER_PROTOCOL_MULTICAST_PORT));
             return new InetSocketAddress(multicastAddress, multicastPort);
-        } catch (Exception ex) {
+        } catch (final Exception ex) {
             throw new RuntimeException("Invalid multicast address/port due to: " + ex, ex);
         }
     }
@@ -641,7 +642,7 @@ public class NiFiProperties extends Properties {
         try {
             return Integer
                     .parseInt(getProperty(CLUSTER_PROTOCOL_MULTICAST_SERVICE_LOCATOR_ATTEMPTS));
-        } catch (NumberFormatException nfe) {
+        } catch (final NumberFormatException nfe) {
             return DEFAULT_CLUSTER_PROTOCOL_MULTICAST_SERVICE_LOCATOR_ATTEMPTS;
         }
     }
@@ -662,9 +663,9 @@ public class NiFiProperties extends Properties {
             if (StringUtils.isBlank(socketAddress)) {
                 socketAddress = "localhost";
             }
-            int socketPort = getClusterNodeProtocolPort();
+            final int socketPort = getClusterNodeProtocolPort();
             return InetSocketAddress.createUnresolved(socketAddress, socketPort);
-        } catch (Exception ex) {
+        } catch (final Exception ex) {
             throw new RuntimeException("Invalid node protocol address/port due to: " + ex, ex);
         }
     }
@@ -672,7 +673,7 @@ public class NiFiProperties extends Properties {
     public Integer getClusterNodeProtocolPort() {
         try {
             return Integer.parseInt(getProperty(CLUSTER_NODE_PROTOCOL_PORT));
-        } catch (NumberFormatException nfe) {
+        } catch (final NumberFormatException nfe) {
             return null;
         }
     }
@@ -680,7 +681,7 @@ public class NiFiProperties extends Properties {
     public int getClusterNodeProtocolThreads() {
         try {
             return Integer.parseInt(getProperty(CLUSTER_NODE_PROTOCOL_THREADS));
-        } catch (NumberFormatException nfe) {
+        } catch (final NumberFormatException nfe) {
             return DEFAULT_CLUSTER_NODE_PROTOCOL_THREADS;
         }
     }
@@ -691,10 +692,10 @@ public class NiFiProperties extends Properties {
             if (StringUtils.isBlank(socketAddress)) {
                 socketAddress = "localhost";
             }
-            int socketPort = Integer
+            final int socketPort = Integer
                     .parseInt(getProperty(CLUSTER_NODE_UNICAST_MANAGER_PROTOCOL_PORT));
             return InetSocketAddress.createUnresolved(socketAddress, socketPort);
-        } catch (Exception ex) {
+        } catch (final Exception ex) {
             throw new RuntimeException("Invalid unicast manager address/port due to: " + ex, ex);
         }
     }
@@ -710,9 +711,9 @@ public class NiFiProperties extends Properties {
             if (StringUtils.isBlank(socketAddress)) {
                 socketAddress = "localhost";
             }
-            int socketPort = getClusterManagerProtocolPort();
+            final int socketPort = getClusterManagerProtocolPort();
             return InetSocketAddress.createUnresolved(socketAddress, socketPort);
-        } catch (Exception ex) {
+        } catch (final Exception ex) {
             throw new RuntimeException("Invalid manager protocol address/port due to: " + ex, ex);
         }
     }
@@ -720,7 +721,7 @@ public class NiFiProperties extends Properties {
     public Integer getClusterManagerProtocolPort() {
         try {
             return Integer.parseInt(getProperty(CLUSTER_MANAGER_PROTOCOL_PORT));
-        } catch (NumberFormatException nfe) {
+        } catch (final NumberFormatException nfe) {
             return null;
         }
     }
@@ -737,7 +738,7 @@ public class NiFiProperties extends Properties {
     public int getClusterManagerNodeEventHistorySize() {
         try {
             return Integer.parseInt(getProperty(CLUSTER_MANAGER_NODE_EVENT_HISTORY_SIZE));
-        } catch (NumberFormatException nfe) {
+        } catch (final NumberFormatException nfe) {
             return DEFAULT_CLUSTER_MANAGER_NODE_EVENT_HISTORY_SIZE;
         }
     }
@@ -755,7 +756,7 @@ public class NiFiProperties extends Properties {
     public int getClusterManagerNodeApiRequestThreads() {
         try {
             return Integer.parseInt(getProperty(CLUSTER_MANAGER_NODE_API_REQUEST_THREADS));
-        } catch (NumberFormatException nfe) {
+        } catch (final NumberFormatException nfe) {
             return DEFAULT_CLUSTER_MANAGER_NODE_API_NUM_REQUEST_THREADS;
         }
     }
@@ -768,7 +769,7 @@ public class NiFiProperties extends Properties {
     public int getClusterManagerProtocolThreads() {
         try {
             return Integer.parseInt(getProperty(CLUSTER_MANAGER_PROTOCOL_THREADS));
-        } catch (NumberFormatException nfe) {
+        } catch (final NumberFormatException nfe) {
             return DEFAULT_CLUSTER_MANAGER_PROTOCOL_THREADS;
         }
     }
@@ -790,7 +791,7 @@ public class NiFiProperties extends Properties {
     public InetSocketAddress getNodeApiAddress() {
 
         final String rawScheme = getClusterProtocolManagerToNodeApiScheme();
-        final String scheme = (rawScheme == null) ? "http" : rawScheme;
+        final String scheme = rawScheme == null ? "http" : rawScheme;
 
         final String host;
         final Integer port;
@@ -861,7 +862,7 @@ public class NiFiProperties extends Properties {
         final Map<String, Path> contentRepositoryPaths = new HashMap<>();
 
         // go through each property
-        for (String propertyName : stringPropertyNames()) {
+        for (final String propertyName : stringPropertyNames()) {
             // determine if the property is a file repository path
             if (StringUtils.startsWith(propertyName, REPOSITORY_CONTENT_PREFIX)) {
                 // get the repository key
@@ -887,7 +888,7 @@ public class NiFiProperties extends Properties {
         final Map<String, Path> provenanceRepositoryPaths = new HashMap<>();
 
         // go through each property
-        for (String propertyName : stringPropertyNames()) {
+        for (final String propertyName : stringPropertyNames()) {
             // determine if the property is a file repository path
             if (StringUtils.startsWith(propertyName, PROVENANCE_REPO_DIRECTORY_PREFIX)) {
                 // get the repository key
@@ -904,7 +905,7 @@ public class NiFiProperties extends Properties {
     public int getMaxFlowFilesPerClaim() {
         try {
             return Integer.parseInt(getProperty(MAX_FLOWFILES_PER_CLAIM));
-        } catch (NumberFormatException nfe) {
+        } catch (final NumberFormatException nfe) {
             return DEFAULT_MAX_FLOWFILES_PER_CLAIM;
         }
     }

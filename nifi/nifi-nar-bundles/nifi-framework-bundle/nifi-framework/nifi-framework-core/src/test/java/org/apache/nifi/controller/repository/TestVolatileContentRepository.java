@@ -17,6 +17,7 @@
 package org.apache.nifi.controller.repository;
 
 import org.apache.nifi.controller.repository.VolatileContentRepository;
+
 import static org.junit.Assert.assertEquals;
 
 import java.io.ByteArrayOutputStream;
@@ -31,8 +32,8 @@ import java.util.concurrent.TimeUnit;
 import org.apache.nifi.controller.repository.claim.ContentClaim;
 import org.apache.nifi.controller.repository.claim.ContentClaimManager;
 import org.apache.nifi.controller.repository.claim.StandardContentClaimManager;
+import org.apache.nifi.events.EventReporter;
 import org.apache.nifi.util.NiFiProperties;
-
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -45,7 +46,7 @@ public class TestVolatileContentRepository {
 
     @Before
     public void setup() {
-        claimManager = new StandardContentClaimManager();
+        claimManager = new StandardContentClaimManager(Mockito.mock(EventReporter.class));
     }
 
     @Test

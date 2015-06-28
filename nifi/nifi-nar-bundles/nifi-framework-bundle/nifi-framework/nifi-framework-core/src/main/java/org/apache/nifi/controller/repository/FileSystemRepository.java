@@ -539,7 +539,7 @@ public class FileSystemRepository implements ContentRepository {
 
         Path path = null;
         try {
-            path = getPath(claim, false);
+            path = getPath(claim, false, checkArchive);
         } catch (final ContentNotFoundException cnfe) {
         }
 

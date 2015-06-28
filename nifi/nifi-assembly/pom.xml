@@ -229,9 +229,10 @@ language governing permissions and limitations under the License. -->
 
         <nifi.flowfile.repository.implementation>org.apache.nifi.controller.repository.WriteAheadFlowFileRepository</nifi.flowfile.repository.implementation>
         <nifi.flowfile.repository.directory>./flowfile_repository</nifi.flowfile.repository.directory>
-        <nifi.flowfile.repository.partitions>256</nifi.flowfile.repository.partitions>
+        <nifi.flowfile.repository.partitions>16</nifi.flowfile.repository.partitions>
         <nifi.flowfile.repository.checkpoint.interval>2 mins</nifi.flowfile.repository.checkpoint.interval>
         <nifi.flowfile.repository.always.sync>false</nifi.flowfile.repository.always.sync>
+        <nifi.flowfile.repository.updates.between.sync>128</nifi.flowfile.repository.updates.between.sync>
         <nifi.swap.manager.implementation>org.apache.nifi.controller.FileSystemSwapManager</nifi.swap.manager.implementation>
         <nifi.queue.swap.threshold>20000</nifi.queue.swap.threshold>
         <nifi.swap.in.period>5 sec</nifi.swap.in.period>

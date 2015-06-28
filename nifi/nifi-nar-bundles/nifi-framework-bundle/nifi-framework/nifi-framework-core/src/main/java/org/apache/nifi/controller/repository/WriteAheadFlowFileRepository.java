@@ -82,6 +82,8 @@ public class WriteAheadFlowFileRepository implements FlowFileRepository, SyncLis
     private final Path flowFileRepositoryPath;
     private final int numPartitions;
     private final ScheduledExecutorService checkpointExecutor;
+    private final AtomicLong updateCount = new AtomicLong(0L);
+    private final int updatesBetweenSyncs;
 
     // effectively final
     private WriteAheadRepository<RepositoryRecord> wal;
@@ -120,7 +122,7 @@ public class WriteAheadFlowFileRepository implements FlowFileRepository, SyncLis
         flowFileRepositoryPath = properties.getFlowFileRepositoryPath();
         numPartitions = properties.getFlowFileRepositoryPartitions();
         checkpointDelayMillis = FormatUtils.getTimeDuration(properties.getFlowFileRepositoryCheckpointInterval(), TimeUnit.MILLISECONDS);
-
+        updatesBetweenSyncs = properties.getIntegerProperty(NiFiProperties.FLOWFILE_REPOSITORY_UPDATES_BETWEEN_SYNCS, 128);
         checkpointExecutor = Executors.newSingleThreadScheduledExecutor();
     }
 
@@ -163,11 +165,10 @@ public class WriteAheadFlowFileRepository implements FlowFileRepository, SyncLis
         return Files.getFileStore(flowFileRepositoryPath).getUsableSpace();
     }
 
-    private final AtomicLong updateCount = new AtomicLong(0L);
     @Override
     public void updateRepository(final Collection<RepositoryRecord> records) throws IOException {
         final long updates = updateCount.incrementAndGet();
-        updateRepository(records, alwaysSync || updates % 100 == 0);
+        updateRepository(records, alwaysSync || updatesBetweenSyncs > 0 && updates % updatesBetweenSyncs == 0);
     }
 
     private void updateRepository(final Collection<RepositoryRecord> records, final boolean sync) throws IOException {
@@ -241,18 +242,27 @@ public class WriteAheadFlowFileRepository implements FlowFileRepository, SyncLis
         for (final ContentClaim claim : claimsToDestroy) {
             markDestructable(claim);
         }
+
+        logger.info("Marked {} Content Claims as destructable for FlowFile Repository partition {}", claimsToDestroy.size(), partitionIndex);
     }
 
     @Override
     public void onGlobalSync() {
-        for (final BlockingQueue<ContentClaim> claimQueue : claimsAwaitingDestruction.values()) {
+        int destroyed = 0;
+        for (final Map.Entry<Integer, BlockingQueue<ContentClaim>> entry : claimsAwaitingDestruction.entrySet()) {
+            final Integer partitionIndex = entry.getKey();
+            final BlockingQueue<ContentClaim> claimQueue = entry.getValue();
             final Set<ContentClaim> claimsToDestroy = new HashSet<>();
             claimQueue.drainTo(claimsToDestroy);
+            destroyed += claimsToDestroy.size();
 
             for (final ContentClaim claim : claimsToDestroy) {
                 markDestructable(claim);
             }
+            logger.debug("As part of checkpointing FlowFile Repository, marked {} claims as destructable for partition {}", claimsToDestroy.size(), partitionIndex);
         }
+
+        logger.info("Marked {} claims as destructable as a result of checkpointing FlowFile repository", destroyed);
     }
 
     /**

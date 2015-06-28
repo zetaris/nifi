@@ -280,7 +280,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
     private final NodeProtocolSender protocolSender;
 
     private final ScheduledExecutorService clusterTaskExecutor = new FlowEngine(3, "Clustering Tasks");
-    private final ContentClaimManager contentClaimManager = new StandardContentClaimManager();
+    private final ContentClaimManager contentClaimManager;
 
     // guarded by rwLock
     /**
@@ -389,13 +389,14 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         timerDrivenEngineRef = new AtomicReference<>(new FlowEngine(maxTimerDrivenThreads.get(), "Timer-Driven Process"));
         eventDrivenEngineRef = new AtomicReference<>(new FlowEngine(maxEventDrivenThreads.get(), "Event-Driven Process"));
 
+        bulletinRepository = new VolatileBulletinRepository();
+        nodeBulletinSubscriber = new AtomicReference<>();
+
+        contentClaimManager = new StandardContentClaimManager(createEventReporter(bulletinRepository));
         final FlowFileRepository flowFileRepo = createFlowFileRepository(properties, contentClaimManager);
         flowFileRepository = flowFileRepo;
         flowFileEventRepository = flowFileEventRepo;
         counterRepositoryRef = new AtomicReference<CounterRepository>(new StandardCounterRepository());
-
-        bulletinRepository = new VolatileBulletinRepository();
-        nodeBulletinSubscriber = new AtomicReference<>();
 
         try {
             this.provenanceEventRepository = createProvenanceRepository(properties);
@@ -593,7 +594,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         writeLock.lock();
         try {
             if (startDelayedComponents) {
-                LOG.info("Starting {} processors/ports/funnels", (startConnectablesAfterInitialization.size() + startRemoteGroupPortsAfterInitialization.size()));
+                LOG.info("Starting {} processors/ports/funnels", startConnectablesAfterInitialization.size() + startRemoteGroupPortsAfterInitialization.size());
                 for (final Connectable connectable : startConnectablesAfterInitialization) {
                     if (connectable.getScheduledState() == ScheduledState.DISABLED) {
                         continue;
@@ -1012,7 +1013,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
     public boolean isTerminated() {
         this.readLock.lock();
         try {
-            return (null == this.timerDrivenEngineRef.get() || this.timerDrivenEngineRef.get().isTerminated());
+            return null == this.timerDrivenEngineRef.get() || this.timerDrivenEngineRef.get().isTerminated();
         } finally {
             this.readLock.unlock();
         }
@@ -1828,9 +1829,9 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         } else if (id1.equals(id2)) {
             return true;
         } else {
-            final String comparable1 = (id1.equals(ROOT_GROUP_ID_ALIAS) ? getRootGroupId() : id1);
-            final String comparable2 = (id2.equals(ROOT_GROUP_ID_ALIAS) ? getRootGroupId() : id2);
-            return (comparable1.equals(comparable2));
+            final String comparable1 = id1.equals(ROOT_GROUP_ID_ALIAS) ? getRootGroupId() : id1;
+            final String comparable2 = id2.equals(ROOT_GROUP_ID_ALIAS) ? getRootGroupId() : id2;
+            return comparable1.equals(comparable2);
         }
     }
 
@@ -1964,7 +1965,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         }
 
         final String searchId = id.equals(ROOT_GROUP_ID_ALIAS) ? getRootGroupId() : id;
-        return (root == null) ? null : root.findProcessGroup(searchId);
+        return root == null ? null : root.findProcessGroup(searchId);
     }
 
     @Override
@@ -2079,8 +2080,8 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
                 connStatus.setOutputBytes(connectionStatusReport.getContentSizeOut());
                 connStatus.setOutputCount(connectionStatusReport.getFlowFilesOut());
 
-                flowFilesTransferred += (connectionStatusReport.getFlowFilesIn() + connectionStatusReport.getFlowFilesOut());
-                bytesTransferred += (connectionStatusReport.getContentSizeIn() + connectionStatusReport.getContentSizeOut());
+                flowFilesTransferred += connectionStatusReport.getFlowFilesIn() + connectionStatusReport.getFlowFilesOut();
+                bytesTransferred += connectionStatusReport.getContentSizeIn() + connectionStatusReport.getContentSizeOut();
             }
 
             if (StringUtils.isNotBlank(conn.getName())) {

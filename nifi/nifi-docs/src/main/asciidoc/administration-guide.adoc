@@ -433,9 +433,30 @@ to configure it on a separate drive if available.
 |*Property*|*Description*
 |nifi.flowfile.repository.implementation|The FlowFile Repository implementation. The default value is org.apache.nifi.controller.repository.WriteAheadFlowFileRepository and should not be changed.
 |nifi.flowfile.repository.directory*|The location of the FlowFile Repository. The default value is ./flowfile_repository.
-|nifi.flowfile.repository.partitions|The number of partitions. The default value is 256.
+|nifi.flowfile.repository.partitions|The number of partitions. This number indicates the maximum number of threads that are allowed to
+	update the FlowFile Repository simultaneously. However, each of these partitions must periodically be synchronized to the
+	underlying disk, which is very expensive. As a result, when this happens, the more partitions that exist, the more expensive
+	this synchronization is. Until version 0.2.0-incubating, the default value was 256. Starting at version 0.2.0-incubating, the default
+	value was changed to 32.
 |nifi.flowfile.repository.checkpoint.interval| The FlowFile Repository checkpoint interval. The default value is 2 mins.
-|nifi.flowfile.repository.always.sync|If set to _true_, any change to the repository will be synchronized to the disk, meaning that NiFi will ask the operating system not to cache the information. This is very expensive and can significantly reduce NiFi performance. However, if it is _false_, there could be the potential for data loss if either there is a sudden power loss or the operating system crashes. The default value is _false_.
+|nifi.flowfile.repository.always.sync|_*Deprecated*: Use of this property is deprecated as of NiFi 0.2.0-incubating. This property will be
+	removed in a later version of NiFi. In order to gain the equivalent functionality, set the value of the `nifi.flowfile.repository.updates.between.sync`
+	property to `1`._
+	If set to _true_, any change to the repository will be synchronized to the disk, 
+	meaning that NiFi will ask the operating system not to cache the information. This is very expensive and can significantly 
+	reduce NiFi performance. However, if it is _false_, there could be the potential for data loss if either there is a sudden 
+	power loss or the operating system crashes. The default value is _false_.
+|nifi.flowfile.repository.updates.between.sync|Specifies the number of times that the repository can be updated before a partition is 
+	synchronized with disk. A value of `0` indicates that it should never been synchronized on update. A value of `1` indicates that it should
+	be synchronized with each update. Very small values for this property may result in reduced overall
+	performance due to excessive disk utilization, as it causes the system to bypass the Operating System's caching mechanisms. 
+	However, setting the value too large can result in sporadic performance. This is due to the fact that in order to prevent data loss,
+	the Content Repository cannot destroy content until the FlowFile Repository has performed a 'sync'. As a result, if this value is
+	very large (or set to 0), this will happen only when the repository is checkpointed. Consequently, each time that the repository is
+	checkpointed, the Content Repository is forced to destroy a potentially very large number of files, which drastically reduces overall
+	disk performance. Additionally, if the number of files is very large, the system will be forced to block while these deletions take
+	place in order to avoid depleting all of the system's resources. This property was introduced in version
+	0.2.0-incubating. The default value for this property is 128.
 |====
 
 *Swap Management* +

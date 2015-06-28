@@ -19,6 +19,7 @@ package org.apache.nifi.controller.repository;
 import org.apache.nifi.controller.repository.WriteAheadFlowFileRepository;
 import org.apache.nifi.controller.repository.StandardRepositoryRecord;
 import org.apache.nifi.controller.repository.StandardFlowFileRecord;
+
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -35,8 +36,8 @@ import java.util.List;
 import org.apache.nifi.connectable.Connection;
 import org.apache.nifi.controller.FlowFileQueue;
 import org.apache.nifi.controller.repository.claim.StandardContentClaimManager;
+import org.apache.nifi.events.EventReporter;
 import org.apache.nifi.util.file.FileUtils;
-
 import org.junit.Test;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
@@ -53,7 +54,7 @@ public class TestWriteAheadFlowFileRepository {
         }
 
         final WriteAheadFlowFileRepository repo = new WriteAheadFlowFileRepository();
-        repo.initialize(new StandardContentClaimManager());
+        repo.initialize(new StandardContentClaimManager(Mockito.mock(EventReporter.class)));
 
         final List<Connection> connectionList = new ArrayList<>();
         final QueueProvider queueProvider = new QueueProvider() {
@@ -119,7 +120,7 @@ public class TestWriteAheadFlowFileRepository {
 
         // restore
         final WriteAheadFlowFileRepository repo2 = new WriteAheadFlowFileRepository();
-        repo2.initialize(new StandardContentClaimManager());
+        repo2.initialize(new StandardContentClaimManager(Mockito.mock(EventReporter.class)));
         repo2.loadFlowFiles(queueProvider, 0L);
 
         assertEquals(1, flowFileCollection.size());

@@ -24,6 +24,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.nifi.events.EventReporter;
+import org.apache.nifi.reporting.Severity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,6 +35,11 @@ public class StandardContentClaimManager implements ContentClaimManager {
     private static final Logger logger = LoggerFactory.getLogger(StandardContentClaimManager.class);
 
     private static final ConcurrentMap<String, BlockingQueue<ContentClaim>> destructableClaims = new ConcurrentHashMap<>();
+    private final EventReporter eventReporter;
+
+    public StandardContentClaimManager(final EventReporter eventReporter) {
+        this.eventReporter = eventReporter;
+    }
 
     @Override
     public ContentClaim newContentClaim(final String container, final String section, final String id, final boolean lossTolerant) {
@@ -114,7 +121,19 @@ public class StandardContentClaimManager implements ContentClaimManager {
         logger.debug("Marking claim {} as destructable", claim);
         try {
             final BlockingQueue<ContentClaim> destructableQueue = getDestructableClaimQueue(claim.getContainer());
-            while (!destructableQueue.offer(claim, 30, TimeUnit.MINUTES)) {
+            final boolean accepted = destructableQueue.offer(claim);
+            if (!accepted) {
+                final long start = System.nanoTime();
+
+                while (!destructableQueue.offer(claim, 30, TimeUnit.MINUTES)) {
+                }
+
+                final long millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+                if (millis > 10L) {
+                    logger.warn("Total wait duration to add claim to Destructable Claim Queue was {} millis", millis);
+                    eventReporter.reportEvent(Severity.WARNING, "Content Repository", "The Content Repository is unable to destroy content as fast "
+                        + "as it is being created. The flow will be slowed in order to adjust for this.");
+                }
             }
         } catch (final InterruptedException ie) {
         }

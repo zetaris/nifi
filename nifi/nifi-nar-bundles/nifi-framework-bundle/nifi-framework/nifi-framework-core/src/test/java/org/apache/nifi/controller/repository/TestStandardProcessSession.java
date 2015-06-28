@@ -53,6 +53,7 @@ import org.apache.nifi.controller.StandardFlowFileQueue;
 import org.apache.nifi.controller.repository.claim.ContentClaim;
 import org.apache.nifi.controller.repository.claim.ContentClaimManager;
 import org.apache.nifi.controller.repository.claim.StandardContentClaimManager;
+import org.apache.nifi.events.EventReporter;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.groups.ProcessGroup;
 import org.apache.nifi.processor.Relationship;
@@ -179,7 +180,7 @@ public class TestStandardProcessSession {
         when(connectable.getConnections()).thenReturn(new HashSet<>(connList));
 
         contentRepo = new MockContentRepository();
-        contentRepo.initialize(new StandardContentClaimManager());
+        contentRepo.initialize(new StandardContentClaimManager(Mockito.mock(EventReporter.class)));
         flowFileRepo = new MockFlowFileRepository();
 
         final ProcessContext context = new ProcessContext(connectable, new AtomicLong(0L), contentRepo, flowFileRepo, flowFileEventRepo, counterRepo, provenanceRepo);
@@ -321,7 +322,7 @@ public class TestStandardProcessSession {
                 .entryDate(System.currentTimeMillis())
                 .build();
         flowFileQueue.put(flowFileRecord);
-        FlowFile flowFile = session.get();
+        final FlowFile flowFile = session.get();
         assertNotNull(flowFile);
         final ObjectHolder<InputStream> inputStreamHolder = new ObjectHolder<>(null);
         session.read(flowFile, new InputStreamCallback() {
@@ -402,7 +403,7 @@ public class TestStandardProcessSession {
 
         session.write(flowFile2, nop);
 
-        FlowFile flowFile3 = session.create();
+        final FlowFile flowFile3 = session.create();
         session.write(flowFile3, nop);
 
         session.rollback();
@@ -418,8 +419,8 @@ public class TestStandardProcessSession {
 
         flowFileQueue.put(flowFileRecord);
 
-        FlowFile orig = session.get();
-        FlowFile newFlowFile = session.create(orig);
+        final FlowFile orig = session.get();
+        final FlowFile newFlowFile = session.create(orig);
         session.remove(newFlowFile);
         session.commit();
 
@@ -435,8 +436,8 @@ public class TestStandardProcessSession {
 
         flowFileQueue.put(flowFileRecord);
 
-        FlowFile orig = session.get();
-        FlowFile newFlowFile = session.create(orig);
+        final FlowFile orig = session.get();
+        final FlowFile newFlowFile = session.create(orig);
         session.transfer(newFlowFile, new Relationship.Builder().name("A").build());
         session.commit();
 
@@ -452,9 +453,9 @@ public class TestStandardProcessSession {
 
         flowFileQueue.put(flowFileRecord);
 
-        FlowFile orig = session.get();
-        FlowFile newFlowFile = session.create(orig);
-        FlowFile secondNewFlowFile = session.create(orig);
+        final FlowFile orig = session.get();
+        final FlowFile newFlowFile = session.create(orig);
+        final FlowFile secondNewFlowFile = session.create(orig);
         session.remove(newFlowFile);
         session.transfer(secondNewFlowFile, new Relationship.Builder().name("A").build());
         session.commit();
@@ -547,8 +548,8 @@ public class TestStandardProcessSession {
         // we have to increment the ID generator because we are creating a FlowFile without the FlowFile Repository's knowledge
         flowFileRepo.idGenerator.getAndIncrement();
 
-        FlowFile orig = session.get();
-        FlowFile newFlowFile = session.create(orig);
+        final FlowFile orig = session.get();
+        final FlowFile newFlowFile = session.create(orig);
         session.transfer(newFlowFile, new Relationship.Builder().name("A").build());
         session.getProvenanceReporter().fork(newFlowFile, Collections.singleton(orig));
         session.remove(orig);
@@ -566,7 +567,7 @@ public class TestStandardProcessSession {
 
     @Test
     public void testProcessExceptionThrownIfCallbackThrowsInOutputStreamCallback() {
-        FlowFile ff1 = session.create();
+        final FlowFile ff1 = session.create();
 
         final RuntimeException runtime = new RuntimeException();
         try {
@@ -610,7 +611,7 @@ public class TestStandardProcessSession {
 
     @Test
     public void testProcessExceptionThrownIfCallbackThrowsInStreamCallback() {
-        FlowFile ff1 = session.create();
+        final FlowFile ff1 = session.create();
 
         final RuntimeException runtime = new RuntimeException();
         try {
@@ -689,7 +690,7 @@ public class TestStandardProcessSession {
 
         // attempt to read the data.
         try {
-            FlowFile ff1 = session.get();
+            final FlowFile ff1 = session.get();
 
             session.read(ff1, new InputStreamCallback() {
                 @Override
@@ -738,7 +739,7 @@ public class TestStandardProcessSession {
 
         // attempt to read the data.
         try {
-            FlowFile ff1 = session.get();
+            final FlowFile ff1 = session.get();
 
             session.write(ff1, new StreamCallback() {
                 @Override
@@ -830,7 +831,7 @@ public class TestStandardProcessSession {
         // attempt to read the data.
         try {
             session.get();
-            FlowFile ff2 = session.get();
+            final FlowFile ff2 = session.get();
             session.write(ff2, new StreamCallback() {
                 @Override
                 public void process(InputStream in, OutputStream out) throws IOException {
@@ -918,7 +919,7 @@ public class TestStandardProcessSession {
         // attempt to read the data.
         try {
             session.get();
-            FlowFile ff2 = session.get();
+            final FlowFile ff2 = session.get();
             session.read(ff2, new InputStreamCallback() {
                 @Override
                 public void process(InputStream in) throws IOException {
@@ -931,7 +932,7 @@ public class TestStandardProcessSession {
 
     @Test
     public void testProcessExceptionThrownIfCallbackThrowsInInputStreamCallback() {
-        FlowFile ff1 = session.create();
+        final FlowFile ff1 = session.create();
 
         final RuntimeException runtime = new RuntimeException();
         try {
@@ -975,7 +976,7 @@ public class TestStandardProcessSession {
 
     @Test
     public void testCreateEmitted() throws IOException {
-        FlowFile newFlowFile = session.create();
+        final FlowFile newFlowFile = session.create();
         session.transfer(newFlowFile, new Relationship.Builder().name("A").build());
         session.commit();
 
@@ -1114,7 +1115,7 @@ public class TestStandardProcessSession {
         private final AtomicLong claimsRemoved = new AtomicLong(0L);
         private ContentClaimManager claimManager;
 
-        private ConcurrentMap<ContentClaim, AtomicInteger> claimantCounts = new ConcurrentHashMap<>();
+        private final ConcurrentMap<ContentClaim, AtomicInteger> claimantCounts = new ConcurrentHashMap<>();
 
         @Override
         public void shutdown() {

@@ -18,6 +18,7 @@ package org.apache.nifi.controller.repository;
 
 import org.apache.nifi.controller.repository.FileSystemRepository;
 import org.apache.nifi.controller.repository.ContentNotFoundException;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -41,10 +42,11 @@ import java.util.List;
 import org.apache.nifi.controller.repository.claim.ContentClaim;
 import org.apache.nifi.controller.repository.claim.StandardContentClaimManager;
 import org.apache.nifi.controller.repository.util.DiskUtils;
+import org.apache.nifi.events.EventReporter;
 import org.apache.nifi.util.NiFiProperties;
-
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 public class TestFileSystemRepository {
 
@@ -63,7 +65,7 @@ public class TestFileSystemRepository {
         }
 
         repository = new FileSystemRepository();
-        repository.initialize(new StandardContentClaimManager());
+        repository.initialize(new StandardContentClaimManager(Mockito.mock(EventReporter.class)));
         repository.purge();
     }
 
@@ -314,9 +316,9 @@ public class TestFileSystemRepository {
         }
 
         final ContentClaim destination = repository.create(true);
-        final byte[] headerBytes = (header == null) ? null : header.getBytes();
-        final byte[] footerBytes = (footer == null) ? null : footer.getBytes();
-        final byte[] demarcatorBytes = (demarcator == null) ? null : demarcator.getBytes();
+        final byte[] headerBytes = header == null ? null : header.getBytes();
+        final byte[] footerBytes = footer == null ? null : footer.getBytes();
+        final byte[] demarcatorBytes = demarcator == null ? null : demarcator.getBytes();
         repository.merge(claims, destination, headerBytes, footerBytes, demarcatorBytes);
 
         final StringBuilder sb = new StringBuilder();
