@@ -23,6 +23,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.nifi.events.EventReporter;
 import org.apache.nifi.reporting.Severity;
@@ -36,6 +37,7 @@ public class StandardContentClaimManager implements ContentClaimManager {
 
     private static final ConcurrentMap<String, BlockingQueue<ContentClaim>> destructableClaims = new ConcurrentHashMap<>();
     private final EventReporter eventReporter;
+    private final AtomicLong lastBulletinTime = new AtomicLong(0L);
 
     public StandardContentClaimManager(final EventReporter eventReporter) {
         this.eventReporter = eventReporter;
@@ -123,16 +125,19 @@ public class StandardContentClaimManager implements ContentClaimManager {
             final BlockingQueue<ContentClaim> destructableQueue = getDestructableClaimQueue(claim.getContainer());
             final boolean accepted = destructableQueue.offer(claim);
             if (!accepted) {
-                final long start = System.nanoTime();
-
                 while (!destructableQueue.offer(claim, 30, TimeUnit.MINUTES)) {
                 }
 
-                final long millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-                if (millis > 10L) {
-                    logger.warn("Total wait duration to add claim to Destructable Claim Queue was {} millis", millis);
-                    eventReporter.reportEvent(Severity.WARNING, "Content Repository", "The Content Repository is unable to destroy content as fast "
-                        + "as it is being created. The flow will be slowed in order to adjust for this.");
+                // If it's been 5+ minutes since we emitted a bulletin, emit a bulletin notifying user that there is backpressure 
+                final long lastTimestamp = lastBulletinTime.get();
+                final long now = System.currentTimeMillis();
+                if (now - lastTimestamp > TimeUnit.MINUTES.toMillis(5)) {
+                    final boolean emitBulletin = lastBulletinTime.compareAndSet(lastTimestamp, now);
+                    
+                    if (emitBulletin) {
+                        eventReporter.reportEvent(Severity.WARNING, "Content Repository", "The Content Repository is unable to destroy content as fast "
+                            + "as it is being created. The flow will be slowed in order to adjust for this.");
+                    }
                 }
             }
         } catch (final InterruptedException ie) {

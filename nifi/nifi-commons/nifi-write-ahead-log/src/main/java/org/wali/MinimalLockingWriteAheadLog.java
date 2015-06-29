@@ -43,6 +43,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.SortedSet;
+import java.util.Stack;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
@@ -82,11 +83,12 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
     private final SortedSet<Path> basePaths;
     private final SerDe<T> serde;
     private final SyncListener syncListener;
+    private final int updatesBetweenSync;
     private final FileChannel lockChannel;
     private final AtomicLong transactionIdGenerator = new AtomicLong(0L);
 
     private final Partition<T>[] partitions;
-    private final AtomicLong partitionIndex = new AtomicLong(0L);
+    private final Stack<Partition<T>> updatePartitionStack;
     private final ConcurrentMap<Object, T> recordMap = new ConcurrentHashMap<>();
     private final Map<Object, T> unmodifiableRecordMap = Collections.unmodifiableMap(recordMap);
     private final Set<String> externalLocations = new CopyOnWriteArraySet<>();
@@ -108,6 +110,10 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
         this(new TreeSet<>(Collections.singleton(path)), partitionCount, serde, syncListener);
     }
 
+    public MinimalLockingWriteAheadLog(final Path path, final int partitionCount, final SerDe<T> serde, final SyncListener syncListener, final int updatesBetweenSync) throws IOException {
+        this(new TreeSet<>(Collections.singleton(path)), partitionCount, serde, syncListener, updatesBetweenSync);
+    }
+
     /**
      *
      * @param paths a sorted set of Paths to use for the partitions/journals and
@@ -121,6 +127,25 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
      * @throws IOException if unable to initialize due to IO issue
      */
     public MinimalLockingWriteAheadLog(final SortedSet<Path> paths, final int partitionCount, final SerDe<T> serde, final SyncListener syncListener) throws IOException {
+        this(paths, partitionCount, serde, syncListener, 0);
+    }
+    
+    /**
+    *
+    * @param paths a sorted set of Paths to use for the partitions/journals and
+    * the snapshot. The snapshot will always be written to the first path
+    * specified.
+    * @param partitionCount the number of partitions/journals to use. For best
+    * performance, this should be close to the number of threads that are
+    * expected to update the repository simultaneously
+    * @param serde the serializer/deserializer for records
+    * @param syncListener the listener
+    * @param updatesBetweenSync if > 0, each partition will be sync'ed after it is updated
+    * this number of times
+    * @throws IOException if unable to initialize due to IO issue
+    */
+    public MinimalLockingWriteAheadLog(final SortedSet<Path> paths, final int partitionCount, final SerDe<T> serde, final SyncListener syncListener, final int updatesBetweenSync) throws IOException {
+        this.updatesBetweenSync = updatesBetweenSync;
         this.syncListener = syncListener;
         this.basePaths = paths;
 
@@ -161,6 +186,10 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
         lockChannel.lock();
 
         partitions = createPartitions(partitionCount);
+        updatePartitionStack = new Stack<>();
+        for (final Partition<T> partition : partitions) {
+            updatePartitionStack.push(partition);
+        }
     }
 
     private Partition<T>[] createPartitions(final int count) throws IOException {
@@ -176,7 +205,7 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
 
             final Path partitionBasePath = pathIterator.next();
 
-            partitions[i] = new Partition<>(partitionBasePath.resolve("partition-" + i), serde, i, getVersion());
+            partitions[i] = new Partition<>(partitionBasePath.resolve("partition-" + i), serde, i, getVersion(), updatesBetweenSync);
         }
 
         return partitions;
@@ -195,7 +224,7 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
         updated = true;
         readLock.lock();
         try {
-            while (true) {
+            findPartition: while (true) {
                 final int numBlackListed = numberBlackListedPartitions.get();
                 if (numBlackListed >= partitions.length) {
                     throw new IOException("All Partitions have been blacklisted due to "
@@ -203,65 +232,85 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
                             + "this issue may resolve itself. Otherwise, manual intervention will be required.");
                 }
 
-                final long partitionIdx = partitionIndex.getAndIncrement();
-                final int resolvedIdx = (int) (partitionIdx % partitions.length);
-                final Partition<T> partition = partitions[resolvedIdx];
-                if (partition.tryClaim()) {
-                    try {
-                        final long transactionId = transactionIdGenerator.getAndIncrement();
-                        if (logger.isTraceEnabled()) {
-                            for (final T record : records) {
-                                logger.trace("Partition {} performing Transaction {}: {}", new Object[]{partition, transactionId, record});
-                            }
-                        }
-
+                Partition<T> partition;
+                synchronized (updatePartitionStack) {
+                    while (updatePartitionStack.isEmpty()) {
                         try {
-                            partition.update(records, transactionId, unmodifiableRecordMap, forceSync);
-                        } catch (final Exception e) {
-                            partition.blackList();
-                            numberBlackListedPartitions.incrementAndGet();
-                            throw e;
+                            updatePartitionStack.wait(1000);
+                        } catch (final InterruptedException e) {
+                            continue findPartition;
                         }
-
-                        if (forceSync && syncListener != null) {
-                            syncListener.onSync(resolvedIdx);
-                        }
-                    } finally {
-                        partition.releaseClaim();
                     }
+                    partition = updatePartitionStack.pop();
+                }
 
-                    for (final T record : records) {
-                        final UpdateType updateType = serde.getUpdateType(record);
-                        final Object recordIdentifier = serde.getRecordIdentifier(record);
-
-                        if (updateType == UpdateType.DELETE) {
-                            recordMap.remove(recordIdentifier);
-                        } else if (updateType == UpdateType.SWAP_OUT) {
-                            final String newLocation = serde.getLocation(record);
-                            if (newLocation == null) {
-                                logger.error("Received Record (ID=" + recordIdentifier + ") with UpdateType of SWAP_OUT but "
-                                        + "no indicator of where the Record is to be Swapped Out to; these records may be "
-                                        + "lost when the repository is restored!");
-                            } else {
+                try {
+                    if (partition.tryClaim()) {
+                        final int partitionIdx = partition.getPartitionIndex();
+                        
+                        try {
+                            final long transactionId = transactionIdGenerator.getAndIncrement();
+                            if (logger.isTraceEnabled()) {
+                                for (final T record : records) {
+                                    logger.trace("Partition {} performing Transaction {}: {}", new Object[]{partition, transactionId, record});
+                                }
+                            }
+    
+                            try {
+                                partition.update(records, transactionId, unmodifiableRecordMap, forceSync);
+                            } catch (final Exception e) {
+                                partition.blackList();
+                                numberBlackListedPartitions.incrementAndGet();
+                                throw e;
+                            }
+    
+                            if (forceSync && syncListener != null) {
+                                syncListener.onSync(partitionIdx);
+                            }
+                        } finally {
+                            partition.releaseClaim();
+                        }
+    
+                        for (final T record : records) {
+                            final UpdateType updateType = serde.getUpdateType(record);
+                            final Object recordIdentifier = serde.getRecordIdentifier(record);
+    
+                            if (updateType == UpdateType.DELETE) {
                                 recordMap.remove(recordIdentifier);
-                                this.externalLocations.add(newLocation);
-                            }
-                        } else if (updateType == UpdateType.SWAP_IN) {
-                            final String newLocation = serde.getLocation(record);
-                            if (newLocation == null) {
-                                logger.error("Received Record (ID=" + recordIdentifier + ") with UpdateType of SWAP_IN but no "
-                                        + "indicator of where the Record is to be Swapped In from; these records may be duplicated "
-                                        + "when the repository is restored!");
+                            } else if (updateType == UpdateType.SWAP_OUT) {
+                                final String newLocation = serde.getLocation(record);
+                                if (newLocation == null) {
+                                    logger.error("Received Record (ID=" + recordIdentifier + ") with UpdateType of SWAP_OUT but "
+                                            + "no indicator of where the Record is to be Swapped Out to; these records may be "
+                                            + "lost when the repository is restored!");
+                                } else {
+                                    recordMap.remove(recordIdentifier);
+                                    this.externalLocations.add(newLocation);
+                                }
+                            } else if (updateType == UpdateType.SWAP_IN) {
+                                final String newLocation = serde.getLocation(record);
+                                if (newLocation == null) {
+                                    logger.error("Received Record (ID=" + recordIdentifier + ") with UpdateType of SWAP_IN but no "
+                                            + "indicator of where the Record is to be Swapped In from; these records may be duplicated "
+                                            + "when the repository is restored!");
+                                } else {
+                                    externalLocations.remove(newLocation);
+                                }
+                                recordMap.put(recordIdentifier, record);
                             } else {
-                                externalLocations.remove(newLocation);
+                                recordMap.put(recordIdentifier, record);
                             }
-                            recordMap.put(recordIdentifier, record);
-                        } else {
-                            recordMap.put(recordIdentifier, record);
+                        }
+    
+                        return partitionIdx;
+                    }
+                } finally {
+                    synchronized (updatePartitionStack) {
+                        if (!partition.isBlackListed()) {
+                            updatePartitionStack.push(partition);
+                            updatePartitionStack.notify();
                         }
                     }
-
-                    return resolvedIdx;
                 }
             }
         } finally {
@@ -677,6 +726,7 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
 
         private final Path editDirectory;
         private final int writeAheadLogVersion;
+        private final int partitionIndex;
 
         private final Lock lock = new ReentrantLock();
         private DataOutputStream dataOut = null;
@@ -686,19 +736,23 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
         private DataInputStream recoveryIn;
         private int recoveryVersion;
         private String currentJournalFilename = "";
+        private long updates = 0L;
 
         private static final byte TRANSACTION_CONTINUE = 1;
         private static final byte TRANSACTION_COMMIT = 2;
 
         private final String description;
+        private final int updatesBetweenSync;
         private final AtomicLong maxTransactionId = new AtomicLong(-1L);
         private final Logger logger = LoggerFactory.getLogger(MinimalLockingWriteAheadLog.class);
 
         private final Queue<Path> recoveryFiles;
 
-        public Partition(final Path path, final SerDe<S> serde, final int partitionIndex, final int writeAheadLogVersion) throws IOException {
+        public Partition(final Path path, final SerDe<S> serde, final int partitionIndex, final int writeAheadLogVersion, final int updatesBetweenSync) throws IOException {
             this.editDirectory = path;
             this.serde = serde;
+            this.partitionIndex = partitionIndex;
+            this.updatesBetweenSync = updatesBetweenSync;
 
             final File file = path.toFile();
             if (!file.exists() && !file.mkdirs()) {
@@ -712,6 +766,10 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
 
             this.description = "Partition-" + partitionIndex;
             this.writeAheadLogVersion = writeAheadLogVersion;
+        }
+        
+        public int getPartitionIndex() {
+            return partitionIndex;
         }
 
         public boolean tryClaim() {
@@ -921,7 +979,8 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
 
             out.flush();
 
-            if (forceSync) {
+            updates++;
+            if (forceSync || (updatesBetweenSync > 0 && updates % updatesBetweenSync == 0)) {
                 fileOut.getFD().sync();
             }
         }
@@ -1066,6 +1125,10 @@ public final class MinimalLockingWriteAheadLog<T> implements WriteAheadRepositor
          */
         public long getMaxRecoveredTransactionId() {
             return maxTransactionId.get();
+        }
+        
+        public boolean isBlackListed() {
+            return blackListed;
         }
 
         @Override
