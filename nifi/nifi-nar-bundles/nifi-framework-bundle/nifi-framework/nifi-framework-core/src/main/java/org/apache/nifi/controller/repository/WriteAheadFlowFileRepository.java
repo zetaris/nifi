@@ -82,6 +82,7 @@ public class WriteAheadFlowFileRepository implements FlowFileRepository, SyncLis
     private final Path flowFileRepositoryPath;
     private final int numPartitions;
     private final ScheduledExecutorService checkpointExecutor;
+    private final AtomicLong updateCount = new AtomicLong(0L);
     private final int updatesBetweenSyncs;
 
     // effectively final
@@ -136,7 +137,7 @@ public class WriteAheadFlowFileRepository implements FlowFileRepository, SyncLis
         // backup and then the data deleted from the normal location; then can move backup to normal location and
         // delete backup. On restore, if no files exist in partition's directory, would have to check backup directory
         serde = new WriteAheadRecordSerde(claimManager);
-        wal = new MinimalLockingWriteAheadLog<>(flowFileRepositoryPath, numPartitions, serde, this, updatesBetweenSyncs);
+        wal = new MinimalLockingWriteAheadLog<>(flowFileRepositoryPath, numPartitions, serde, this);
     }
 
     @Override
@@ -166,7 +167,8 @@ public class WriteAheadFlowFileRepository implements FlowFileRepository, SyncLis
 
     @Override
     public void updateRepository(final Collection<RepositoryRecord> records) throws IOException {
-        updateRepository(records, alwaysSync);
+        final long updates = updateCount.incrementAndGet();
+        updateRepository(records, alwaysSync || updatesBetweenSyncs > 0 && updates % updatesBetweenSyncs == 0);
     }
 
     private void updateRepository(final Collection<RepositoryRecord> records, final boolean sync) throws IOException {
