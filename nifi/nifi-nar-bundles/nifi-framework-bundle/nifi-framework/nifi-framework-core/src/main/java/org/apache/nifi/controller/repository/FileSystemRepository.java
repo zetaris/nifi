@@ -805,47 +805,6 @@ public class FileSystemRepository implements ContentRepository {
         contentClaimManager.purge();
     }
 
-    // private class BinDestructableClaims implements Runnable {
-    //
-    // @Override
-    // public void run() {
-    // try {
-    // // Get all of the Destructable Claims and bin them based on their Container. We do this
-    // // because the Container generally maps to a physical partition on the disk, so we want a few
-    // // different threads hitting the different partitions but don't want multiple threads hitting
-    // // the same partition.
-    // final List<ContentClaim> toDestroy = new ArrayList<>();
-    // while (true) {
-    // toDestroy.clear();
-    // contentClaimManager.drainDestructableClaims(toDestroy, 10000);
-    // if (toDestroy.isEmpty()) {
-    // return;
-    // }
-    //
-    // for (final ContentClaim claim : toDestroy) {
-    // final String container = claim.getContainer();
-    // final BlockingQueue<ContentClaim> claimQueue = reclaimable.get(container);
-    //
-    // try {
-    // while (true) {
-    // if (claimQueue.offer(claim, 10, TimeUnit.MINUTES)) {
-    // break;
-    // } else {
-    // LOG.warn("Failed to clean up {} because old claims aren't being cleaned up fast enough. "
-    // + "This Content Claim will remain in the Content Repository until NiFi is restarted, at which point it will be cleaned up", claim);
-    // }
-    // }
-    // } catch (final InterruptedException ie) {
-    // LOG.warn("Failed to clean up {} because thread was interrupted", claim);
-    // }
-    // }
-    // }
-    // } catch (final Throwable t) {
-    // LOG.error("Failed to cleanup content claims due to {}", t);
-    // }
-    // }
-    // }
-
     public static Path getArchivePath(final Path contentClaimPath) {
         final Path sectionPath = contentClaimPath.getParent();
         final String claimId = contentClaimPath.toFile().getName();
