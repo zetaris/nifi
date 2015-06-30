@@ -123,17 +123,11 @@ public class StandardContentClaimManager implements ContentClaimManager {
             final BlockingQueue<ContentClaim> destructableQueue = getDestructableClaimQueue(claim.getContainer());
             final boolean accepted = destructableQueue.offer(claim);
             if (!accepted) {
-                final long start = System.nanoTime();
-
                 while (!destructableQueue.offer(claim, 30, TimeUnit.MINUTES)) {
                 }
 
-                final long millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-                if (millis > 10L) {
-                    logger.warn("Total wait duration to add claim to Destructable Claim Queue was {} millis", millis);
-                    eventReporter.reportEvent(Severity.WARNING, "Content Repository", "The Content Repository is unable to destroy content as fast "
-                        + "as it is being created. The flow will be slowed in order to adjust for this.");
-                }
+                eventReporter.reportEvent(Severity.WARNING, "Content Repository", "The Content Repository is unable to destroy content as fast "
+                    + "as it is being created. The flow will be slowed in order to adjust for this.");
             }
         } catch (final InterruptedException ie) {
         }
