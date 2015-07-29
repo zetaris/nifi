@@ -16,11 +16,10 @@
  */
 package org.apache.nifi.controller.repository;
 
-import org.apache.nifi.controller.repository.FileSystemRepository;
-import org.apache.nifi.controller.repository.ContentNotFoundException;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
 
 import java.io.ByteArrayInputStream;
@@ -37,12 +36,15 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
 
 import org.apache.nifi.controller.repository.claim.ContentClaim;
-import org.apache.nifi.controller.repository.claim.StandardContentClaimManager;
+import org.apache.nifi.controller.repository.claim.ResourceClaim;
+import org.apache.nifi.controller.repository.claim.StandardResourceClaimManager;
 import org.apache.nifi.controller.repository.util.DiskUtils;
+import org.apache.nifi.stream.io.StreamUtils;
 import org.apache.nifi.util.NiFiProperties;
-
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -53,18 +55,23 @@ public class TestFileSystemRepository {
     public static final File helloWorldFile = new File("src/test/resources/hello.txt");
 
     private FileSystemRepository repository = null;
+    private final File rootFile = new File("target/content_repository");
 
     @Before
     public void setup() throws IOException {
         System.setProperty(NiFiProperties.PROPERTIES_FILE_PATH, "src/test/resources/nifi.properties");
-        final File repo = new File("target/content_repository");
-        if (repo.exists()) {
-            DiskUtils.deleteRecursively(repo);
+        if (rootFile.exists()) {
+            DiskUtils.deleteRecursively(rootFile);
         }
 
         repository = new FileSystemRepository();
-        repository.initialize(new StandardContentClaimManager());
+        repository.initialize(new StandardResourceClaimManager());
         repository.purge();
+    }
+
+    @After
+    public void shutdown() throws IOException {
+        repository.shutdown();
     }
 
     @Test
@@ -95,6 +102,127 @@ public class TestFileSystemRepository {
         repository.decrementClaimantCount(claim);
         assertEquals(0, repository.getClaimantCount(claim));
         repository.remove(claim);
+    }
+
+    @Test
+    public void testResourceClaimReused() throws IOException {
+        final ContentClaim claim1 = repository.create(false);
+        final ContentClaim claim2 = repository.create(false);
+
+        // should not be equal because claim1 may still be in use
+        assertNotSame(claim1.getResourceClaim(), claim2.getResourceClaim());
+
+        try (final OutputStream out = repository.write(claim1)) {
+        }
+
+        final ContentClaim claim3 = repository.create(false);
+        assertEquals(claim1.getResourceClaim(), claim3.getResourceClaim());
+    }
+
+    @Test
+    public void testResourceClaimNotReusedAfterRestart() throws IOException, InterruptedException {
+        final ContentClaim claim1 = repository.create(false);
+        try (final OutputStream out = repository.write(claim1)) {
+        }
+
+        repository.shutdown();
+        Thread.sleep(1000L);
+
+        repository = new FileSystemRepository();
+        repository.initialize(new StandardResourceClaimManager());
+        repository.purge();
+
+        final ContentClaim claim2 = repository.create(false);
+        assertNotSame(claim1.getResourceClaim(), claim2.getResourceClaim());
+    }
+
+    @Test
+    public void testRewriteContentClaim() throws IOException {
+        final ContentClaim claim1 = repository.create(false);
+        assertEquals(1, repository.getClaimantCount(claim1));
+
+        try (final OutputStream out = repository.write(claim1)) {
+            out.write("abc".getBytes());
+        }
+        assertEquals(1, repository.getClaimantCount(claim1));
+
+        try (final OutputStream out = repository.write(claim1)) {
+            out.write("cba".getBytes());
+        }
+        assertEquals(1, repository.getClaimantCount(claim1));
+
+        try (final InputStream in = repository.read(claim1)) {
+            assertEquals('c', in.read());
+            assertEquals('b', in.read());
+            assertEquals('a', in.read());
+        }
+        assertEquals(1, repository.getClaimantCount(claim1));
+
+        assertEquals(3, repository.size(claim1));
+
+        final byte[] oneMB = new byte[1024 * 1024 - 6];
+        new Random().nextBytes(oneMB);
+        try (final OutputStream out = repository.write(claim1)) {
+            out.write(oneMB);
+        }
+        assertEquals(1, repository.getClaimantCount(claim1));
+
+        assertEquals(1024 * 1024 - 6, repository.size(claim1));
+        try (final InputStream in = repository.read(claim1)) {
+            final byte[] buff = new byte[oneMB.length];
+            StreamUtils.fillBuffer(in, buff);
+            assertTrue(Arrays.equals(buff, oneMB));
+        }
+
+        final ResourceClaim resourceClaim = claim1.getResourceClaim();
+        final Path path = rootFile.toPath().resolve(resourceClaim.getSection()).resolve(resourceClaim.getId());
+        assertTrue(Files.exists(path));
+        assertEquals(0, repository.decrementClaimantCount(claim1));
+        assertTrue(repository.remove(claim1));
+        assertFalse(Files.exists(path));
+
+        final ContentClaim claim2 = repository.create(false);
+        assertNotSame(claim1.getResourceClaim(), claim2.getResourceClaim());
+    }
+
+    @Test
+    public void testWriteWithNoContent() throws IOException {
+        final ContentClaim claim1 = repository.create(false);
+        try (final OutputStream out = repository.write(claim1)) {
+            out.write("Hello".getBytes());
+        }
+
+        final ContentClaim claim2 = repository.create(false);
+        assertEquals(claim1.getResourceClaim(), claim2.getResourceClaim());
+        try (final OutputStream out = repository.write(claim2)) {
+
+        }
+
+        final ContentClaim claim3 = repository.create(false);
+        assertEquals(claim1.getResourceClaim(), claim3.getResourceClaim());
+        try (final OutputStream out = repository.write(claim3)) {
+            out.write(" World".getBytes());
+        }
+
+        final ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (final InputStream in = repository.read(claim1)) {
+            StreamUtils.copy(in, baos);
+        }
+
+        assertEquals("Hello", baos.toString());
+
+        baos.reset();
+        try (final InputStream in = repository.read(claim2)) {
+            StreamUtils.copy(in, baos);
+        }
+        assertEquals("", baos.toString());
+        assertEquals(0, baos.size());
+
+        baos.reset();
+        try (final InputStream in = repository.read(claim3)) {
+            StreamUtils.copy(in, baos);
+        }
+        assertEquals(" World", baos.toString());
     }
 
     @Test
@@ -155,6 +283,40 @@ public class TestFileSystemRepository {
         final byte[] data = Files.readAllBytes(path);
         final byte[] expected = Files.readAllBytes(testFile.toPath());
         assertTrue(Arrays.equals(expected, data));
+
+        final ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (final InputStream in = repository.read(claim)) {
+            StreamUtils.copy(in, baos);
+        }
+
+        assertTrue(Arrays.equals(expected, baos.toByteArray()));
+    }
+
+    @Test
+    public void testImportFromFileWithAppend() throws IOException {
+        final ContentClaim claim = repository.create(false);
+        final File hello = new File("src/test/resources/hello.txt");
+        final File goodbye = new File("src/test/resources/bye.txt");
+
+        repository.importFrom(hello.toPath(), claim, true);
+        assertContentEquals(claim, "Hello, World");
+
+        repository.importFrom(goodbye.toPath(), claim, true);
+        assertContentEquals(claim, "Hello, WorldGood-Bye, World!");
+
+        repository.importFrom(hello.toPath(), claim, true);
+        assertContentEquals(claim, "Hello, WorldGood-Bye, World!Hello, World");
+
+        repository.importFrom(goodbye.toPath(), claim, false);
+        assertContentEquals(claim, "Good-Bye, World!");
+    }
+
+    private void assertContentEquals(final ContentClaim claim, final String expected) throws IOException {
+        final ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (final InputStream in = repository.read(claim)) {
+            StreamUtils.copy(in, baos);
+        }
+        assertEquals(expected, new String(baos.toByteArray()));
     }
 
     @Test
@@ -314,9 +476,9 @@ public class TestFileSystemRepository {
         }
 
         final ContentClaim destination = repository.create(true);
-        final byte[] headerBytes = (header == null) ? null : header.getBytes();
-        final byte[] footerBytes = (footer == null) ? null : footer.getBytes();
-        final byte[] demarcatorBytes = (demarcator == null) ? null : demarcator.getBytes();
+        final byte[] headerBytes = header == null ? null : header.getBytes();
+        final byte[] footerBytes = footer == null ? null : footer.getBytes();
+        final byte[] demarcatorBytes = demarcator == null ? null : demarcator.getBytes();
         repository.merge(claims, destination, headerBytes, footerBytes, demarcatorBytes);
 
         final StringBuilder sb = new StringBuilder();
@@ -334,8 +496,12 @@ public class TestFileSystemRepository {
         }
         final String expectedText = sb.toString();
         final byte[] expected = expectedText.getBytes();
-        final Path path = getPath(destination);
-        final byte[] actual = Files.readAllBytes(path);
+
+        final ByteArrayOutputStream baos = new ByteArrayOutputStream((int) destination.getLength());
+        try (final InputStream in = repository.read(destination)) {
+            StreamUtils.copy(in, baos);
+        }
+        final byte[] actual = baos.toByteArray();
         assertTrue(Arrays.equals(expected, actual));
     }
 

@@ -44,6 +44,7 @@ import org.apache.nifi.connectable.Connection;
 import org.apache.nifi.controller.FlowFileQueue;
 import org.apache.nifi.controller.ProcessorNode;
 import org.apache.nifi.controller.repository.claim.ContentClaim;
+import org.apache.nifi.controller.repository.claim.ResourceClaim;
 import org.apache.nifi.controller.repository.io.ByteCountingInputStream;
 import org.apache.nifi.controller.repository.io.ByteCountingOutputStream;
 import org.apache.nifi.controller.repository.io.DisableOnCloseInputStream;
@@ -54,10 +55,6 @@ import org.apache.nifi.controller.repository.io.LimitedInputStream;
 import org.apache.nifi.controller.repository.io.LongHolder;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.flowfile.attributes.CoreAttributes;
-import org.apache.nifi.stream.io.BufferedOutputStream;
-import org.apache.nifi.stream.io.NonCloseableInputStream;
-import org.apache.nifi.stream.io.StreamUtils;
-import org.apache.nifi.processor.DataUnit;
 import org.apache.nifi.processor.FlowFileFilter;
 import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processor.QueueSize;
@@ -75,7 +72,8 @@ import org.apache.nifi.provenance.ProvenanceEventRepository;
 import org.apache.nifi.provenance.ProvenanceEventType;
 import org.apache.nifi.provenance.ProvenanceReporter;
 import org.apache.nifi.provenance.StandardProvenanceEventRecord;
-import org.apache.nifi.util.NiFiProperties;
+import org.apache.nifi.stream.io.BufferedOutputStream;
+import org.apache.nifi.stream.io.StreamUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -92,10 +90,6 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
 
     // determines how many things must be transferred, removed, modified in order to avoid logging the FlowFile ID's on commit/rollback
     public static final int VERBOSE_LOG_THRESHOLD = 10;
-    private static final long MAX_APPENDABLE_CLAIM_SIZE = DataUnit.parseDataSize(
-        NiFiProperties.getInstance().getMaxAppendableClaimSize(), DataUnit.B).longValue();
-    private static final int MAX_FLOWFILES_PER_CLAIM = NiFiProperties.getInstance().getMaxFlowFilesPerClaim();
-
     public static final String DEFAULT_FLOWFILE_PATH = "./";
 
     private static final Logger LOG = LoggerFactory.getLogger(StandardProcessSession.class);
@@ -125,11 +119,6 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
     private int flowFilesIn = 0, flowFilesOut = 0;
     private long contentSizeIn = 0L, contentSizeOut = 0L;
     private int writeRecursionLevel = 0;
-
-    private ContentClaim currentWriteClaim = null;
-    private OutputStream currentWriteClaimStream = null;
-    private long currentWriteClaimSize = 0L;
-    private int currentWriteClaimFlowFileCount = 0;
 
     private ContentClaim currentReadClaim = null;
     private ByteCountingInputStream currentReadClaimStream = null;
@@ -690,12 +679,13 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
         if (originalClaim == null) {
             builder.setCurrentContentClaim(null, null, null, null, 0L);
         } else {
+            final ResourceClaim resourceClaim = originalClaim.getResourceClaim();
             builder.setCurrentContentClaim(
-                originalClaim.getContainer(), originalClaim.getSection(), originalClaim.getId(), repoRecord.getOriginal().getContentClaimOffset(), repoRecord.getOriginal().getSize()
-                );
+                resourceClaim.getContainer(), resourceClaim.getSection(), resourceClaim.getId(),
+                repoRecord.getOriginal().getContentClaimOffset() + originalClaim.getOffset(), repoRecord.getOriginal().getSize());
             builder.setPreviousContentClaim(
-                originalClaim.getContainer(), originalClaim.getSection(), originalClaim.getId(), repoRecord.getOriginal().getContentClaimOffset(), repoRecord.getOriginal().getSize()
-                );
+                resourceClaim.getContainer(), resourceClaim.getSection(), resourceClaim.getId(),
+                repoRecord.getOriginal().getContentClaimOffset() + originalClaim.getOffset(), repoRecord.getOriginal().getSize());
         }
     }
 
@@ -711,14 +701,18 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
             final ContentClaim currentClaim = repoRecord.getCurrentClaim();
             final long currentOffset = repoRecord.getCurrentClaimOffset();
             final long size = flowFile.getSize();
-            recordBuilder.setCurrentContentClaim(currentClaim.getContainer(), currentClaim.getSection(), currentClaim.getId(), currentOffset, size);
+
+            final ResourceClaim resourceClaim = currentClaim.getResourceClaim();
+            recordBuilder.setCurrentContentClaim(resourceClaim.getContainer(), resourceClaim.getSection(), resourceClaim.getId(), currentOffset + currentClaim.getOffset(), size);
         }
 
         if (repoRecord.getOriginal() != null && repoRecord.getOriginalClaim() != null) {
             final ContentClaim originalClaim = repoRecord.getOriginalClaim();
             final long originalOffset = repoRecord.getOriginal().getContentClaimOffset();
             final long originalSize = repoRecord.getOriginal().getSize();
-            recordBuilder.setPreviousContentClaim(originalClaim.getContainer(), originalClaim.getSection(), originalClaim.getId(), originalOffset, originalSize);
+
+            final ResourceClaim resourceClaim = originalClaim.getResourceClaim();
+            recordBuilder.setPreviousContentClaim(resourceClaim.getContainer(), resourceClaim.getSection(), resourceClaim.getId(), originalOffset + originalClaim.getOffset(), originalSize);
         }
 
         final FlowFileQueue originalQueue = repoRecord.getOriginalQueue();
@@ -741,14 +735,18 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
                 final ContentClaim currentClaim = repoRecord.getCurrentClaim();
                 final long currentOffset = repoRecord.getCurrentClaimOffset();
                 final long size = eventFlowFile.getSize();
-                recordBuilder.setCurrentContentClaim(currentClaim.getContainer(), currentClaim.getSection(), currentClaim.getId(), currentOffset, size);
+
+                final ResourceClaim resourceClaim = currentClaim.getResourceClaim();
+                recordBuilder.setCurrentContentClaim(resourceClaim.getContainer(), resourceClaim.getSection(), resourceClaim.getId(), currentOffset + currentClaim.getOffset(), size);
             }
 
             if (repoRecord.getOriginal() != null && repoRecord.getOriginalClaim() != null) {
                 final ContentClaim originalClaim = repoRecord.getOriginalClaim();
                 final long originalOffset = repoRecord.getOriginal().getContentClaimOffset();
                 final long originalSize = repoRecord.getOriginal().getSize();
-                recordBuilder.setPreviousContentClaim(originalClaim.getContainer(), originalClaim.getSection(), originalClaim.getId(), originalOffset, originalSize);
+
+                final ResourceClaim resourceClaim = originalClaim.getResourceClaim();
+                recordBuilder.setPreviousContentClaim(resourceClaim.getContainer(), resourceClaim.getSection(), resourceClaim.getId(), originalOffset + originalClaim.getOffset(), originalSize);
             }
 
             final FlowFileQueue originalQueue = repoRecord.getOriginalQueue();
@@ -1650,8 +1648,11 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
 
                             final ContentClaim claim = record.getContentClaim();
                             if (claim != null) {
-                                enriched.setCurrentContentClaim(claim.getContainer(), claim.getSection(), claim.getId(), record.getContentClaimOffset(), record.getSize());
-                                enriched.setPreviousContentClaim(claim.getContainer(), claim.getSection(), claim.getId(), record.getContentClaimOffset(), record.getSize());
+                                final ResourceClaim resourceClaim = claim.getResourceClaim();
+                                enriched.setCurrentContentClaim(resourceClaim.getContainer(), resourceClaim.getSection(), resourceClaim.getId(),
+                                    record.getContentClaimOffset() + claim.getOffset(), record.getSize());
+                                enriched.setPreviousContentClaim(resourceClaim.getContainer(), resourceClaim.getSection(), resourceClaim.getId(),
+                                    record.getContentClaimOffset() + claim.getOffset(), record.getSize());
                             }
 
                             enriched.setAttributes(record.getAttributes(), Collections.<String, String>emptyMap());
@@ -1695,7 +1696,7 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
                             StreamUtils.skip(currentReadClaimStream, bytesToSkip);
                         }
 
-                        return new NonCloseableInputStream(currentReadClaimStream);
+                        return new DisableOnCloseInputStream(currentReadClaimStream);
                     }
                 }
 
@@ -1711,7 +1712,7 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
 
                 // Use a non-closeable stream because we want to keep it open after the callback has finished so that we can
                 // reuse the same InputStream for the next FlowFile
-                return new NonCloseableInputStream(currentReadClaimStream);
+                return new DisableOnCloseInputStream(currentReadClaimStream);
             } else {
                 final InputStream rawInStream = context.getContentRepository().read(claim);
                 StreamUtils.skip(rawInStream, offset);
@@ -1862,30 +1863,6 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
         return newFile;
     }
 
-    private void enforceCurrentWriteClaimState() {
-        if (currentWriteClaimFlowFileCount > MAX_FLOWFILES_PER_CLAIM || currentWriteClaimSize > MAX_APPENDABLE_CLAIM_SIZE) {
-            resetWriteClaims();
-        }
-
-        if (currentWriteClaimStream == null) {
-            try {
-                currentWriteClaim = context.getContentRepository().create(context.getConnectable().isLossTolerant());
-                claimLog.debug("Creating ContentClaim {} to enforce Current Write Claim State for {}", currentWriteClaim, context.getConnectable());
-            } catch (final IOException e) {
-                throw new FlowFileHandlingException("Unable to create ContentClaim due to " + e.toString(), e);
-            }
-
-            try {
-                currentWriteClaimStream = context.getContentRepository().write(currentWriteClaim);
-            } catch (final IOException e) {
-                resetWriteClaims();
-                throw new FlowFileAccessException("Unable to obtain stream for writing to Content Repostiory: " + e, e);
-            }
-        } else {
-            context.getContentRepository().incrementClaimaintCount(currentWriteClaim);
-        }
-    }
-
     private void ensureNotAppending(final ContentClaim claim) throws IOException {
         if (claim == null) {
             return;
@@ -1905,56 +1882,31 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
         validateRecordState(source);
         final StandardRepositoryRecord record = records.get(source);
         long newSize = 0L;
-        long claimOffset = 0L;
+        final long claimOffset = 0L;
 
         ContentClaim newClaim = null;
         final LongHolder writtenHolder = new LongHolder(0L);
         final boolean appendToClaim = isMergeContent();
         try {
-            if (appendToClaim) {
-                enforceCurrentWriteClaimState();
-                claimOffset = currentWriteClaimSize;
-                newClaim = currentWriteClaim;
-                ensureNotAppending(newClaim);
+            newClaim = context.getContentRepository().create(context.getConnectable().isLossTolerant());
+            claimLog.debug("Creating ContentClaim {} for 'write' for {}", newClaim, source);
 
-                try (final OutputStream disableOnClose = new DisableOnCloseOutputStream(currentWriteClaimStream);
-                    final OutputStream countingOut = new ByteCountingOutputStream(disableOnClose, writtenHolder)) {
+            ensureNotAppending(newClaim);
+            try (final OutputStream stream = context.getContentRepository().write(newClaim);
+                final OutputStream disableOnClose = new DisableOnCloseOutputStream(stream);
+                final OutputStream countingOut = new ByteCountingOutputStream(disableOnClose, writtenHolder)) {
+                recursionSet.add(source);
 
-                    recursionSet.add(source);
-
-                    writeRecursionLevel++;
-                    try {
-                        writer.process(new FlowFileAccessOutputStream(countingOut, source));
-                    } finally {
-                        writeRecursionLevel--;
-                    }
+                writeRecursionLevel++;
+                try {
+                    writer.process(new FlowFileAccessOutputStream(countingOut, source));
                 } finally {
-                    recursionSet.remove(source);
+                    writeRecursionLevel--;
                 }
-
-                final long writtenThisCall = writtenHolder.getValue();
-                newSize = writtenThisCall;
-                currentWriteClaimSize += newSize;
-            } else {
-                newClaim = context.getContentRepository().create(context.getConnectable().isLossTolerant());
-                claimLog.debug("Creating ContentClaim {} for 'write' for {}", newClaim, source);
-
-                ensureNotAppending(newClaim);
-                try (final OutputStream stream = context.getContentRepository().write(newClaim);
-                    final OutputStream countingOut = new ByteCountingOutputStream(stream, writtenHolder)) {
-                    recursionSet.add(source);
-
-                    writeRecursionLevel++;
-                    try {
-                        writer.process(new FlowFileAccessOutputStream(countingOut, source));
-                    } finally {
-                        writeRecursionLevel--;
-                    }
-                } finally {
-                    recursionSet.remove(source);
-                }
-                newSize = context.getContentRepository().size(newClaim);
+            } finally {
+                recursionSet.remove(source);
             }
+            newSize = context.getContentRepository().size(newClaim);
         } catch (final ContentNotFoundException nfe) {
             if (appendToClaim) {
                 resetWriteClaims(); // need to reset write claim before we can remove the claim
@@ -2115,18 +2067,6 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
     }
 
     private void resetWriteClaims() {
-        try {
-            if (currentWriteClaimStream != null) {
-                currentWriteClaimStream.flush();
-                currentWriteClaimStream.close();
-            }
-        } catch (final Exception e) {
-        }
-        currentWriteClaimStream = null;
-        currentWriteClaim = null;
-        currentWriteClaimFlowFileCount = 0;
-        currentWriteClaimSize = 0L;
-
         for (final ByteCountingOutputStream out : appendableStreams.values()) {
             try {
                 out.flush();
@@ -2166,116 +2106,60 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
 
         ContentClaim newClaim = null;
         long newSize = 0L;
-        long claimOffset = 0L;
+        final long claimOffset = 0L;
         final LongHolder writtenHolder = new LongHolder(0L);
-        final boolean appendToClaim = isMergeContent();
         try {
-            if (appendToClaim) {
-                enforceCurrentWriteClaimState();
-                claimOffset = currentWriteClaimSize;
-                newClaim = currentWriteClaim;
-                ensureNotAppending(newClaim);
+            newClaim = context.getContentRepository().create(context.getConnectable().isLossTolerant());
+            claimLog.debug("Creating ContentClaim {} for 'write' for {}", newClaim, source);
 
-                try (final InputStream rawIn = getInputStream(source, currClaim, record.getCurrentClaimOffset());
-                    final InputStream limitedIn = new LimitedInputStream(rawIn, source.getSize());
-                    final InputStream disableOnCloseIn = new DisableOnCloseInputStream(limitedIn);
-                    final InputStream countingIn = new ByteCountingInputStream(disableOnCloseIn, bytesRead);
-                    final OutputStream disableOnCloseOut = new DisableOnCloseOutputStream(currentWriteClaimStream);
-                    final OutputStream countingOut = new ByteCountingOutputStream(disableOnCloseOut, writtenHolder)) {
+            ensureNotAppending(newClaim);
 
-                    recursionSet.add(source);
+            try (final InputStream is = getInputStream(source, currClaim, record.getCurrentClaimOffset());
+                final InputStream limitedIn = new LimitedInputStream(is, source.getSize());
+                final InputStream disableOnCloseIn = new DisableOnCloseInputStream(limitedIn);
+                final InputStream countingIn = new ByteCountingInputStream(disableOnCloseIn, bytesRead);
+                final OutputStream os = context.getContentRepository().write(newClaim);
+                final OutputStream disableOnCloseOut = new DisableOnCloseOutputStream(os);
+                final OutputStream countingOut = new ByteCountingOutputStream(disableOnCloseOut, writtenHolder)) {
 
-                    // We want to differentiate between IOExceptions thrown by the repository and IOExceptions thrown from
-                    // Processor code. As a result, as have the FlowFileAccessInputStream that catches IOException from the repository
-                    // and translates into either FlowFileAccessException or ContentNotFoundException. We keep track of any
-                    // ContentNotFoundException because if it is thrown, the Processor code may catch it and do something else with it
-                    // but in reality, if it is thrown, we want to know about it and handle it, even if the Processor code catches it.
-                    final FlowFileAccessInputStream ffais = new FlowFileAccessInputStream(countingIn, source, currClaim);
-                    boolean cnfeThrown = false;
+                recursionSet.add(source);
 
-                    writeRecursionLevel++;
-                    try {
-                        writer.process(ffais, new FlowFileAccessOutputStream(countingOut, source));
-                    } catch (final ContentNotFoundException cnfe) {
-                        cnfeThrown = true;
-                        throw cnfe;
-                    } finally {
-                        writeRecursionLevel--;
-                        recursionSet.remove(source);
+                // We want to differentiate between IOExceptions thrown by the repository and IOExceptions thrown from
+                // Processor code. As a result, as have the FlowFileAccessInputStream that catches IOException from the repository
+                // and translates into either FlowFileAccessException or ContentNotFoundException. We keep track of any
+                // ContentNotFoundException because if it is thrown, the Processor code may catch it and do something else with it
+                // but in reality, if it is thrown, we want to know about it and handle it, even if the Processor code catches it.
+                final FlowFileAccessInputStream ffais = new FlowFileAccessInputStream(countingIn, source, currClaim);
+                boolean cnfeThrown = false;
 
-                        // if cnfeThrown is true, we don't need to re-thrown the Exception; it will propagate.
-                        if (!cnfeThrown && ffais.getContentNotFoundException() != null) {
-                            throw ffais.getContentNotFoundException();
-                        }
+                writeRecursionLevel++;
+                try {
+                    writer.process(ffais, new FlowFileAccessOutputStream(countingOut, source));
+                } catch (final ContentNotFoundException cnfe) {
+                    cnfeThrown = true;
+                    throw cnfe;
+                } finally {
+                    writeRecursionLevel--;
+                    recursionSet.remove(source);
+
+                    // if cnfeThrown is true, we don't need to re-thrown the Exception; it will propagate.
+                    if (!cnfeThrown && ffais.getContentNotFoundException() != null) {
+                        throw ffais.getContentNotFoundException();
                     }
                 }
-
-                final long writtenThisCall = writtenHolder.getValue();
-                newSize = writtenThisCall;
-                currentWriteClaimSize += writtenThisCall;
-            } else {
-                newClaim = context.getContentRepository().create(context.getConnectable().isLossTolerant());
-                claimLog.debug("Creating ContentClaim {} for 'write' for {}", newClaim, source);
-
-                ensureNotAppending(newClaim);
-
-                try (final InputStream is = getInputStream(source, currClaim, record.getCurrentClaimOffset());
-                    final InputStream limitedIn = new LimitedInputStream(is, source.getSize());
-                    final InputStream countingIn = new ByteCountingInputStream(limitedIn, bytesRead);
-                    final OutputStream os = context.getContentRepository().write(newClaim);
-                    final OutputStream countingOut = new ByteCountingOutputStream(os, writtenHolder)) {
-
-                    recursionSet.add(source);
-
-                    // We want to differentiate between IOExceptions thrown by the repository and IOExceptions thrown from
-                    // Processor code. As a result, as have the FlowFileAccessInputStream that catches IOException from the repository
-                    // and translates into either FlowFileAccessException or ContentNotFoundException. We keep track of any
-                    // ContentNotFoundException because if it is thrown, the Processor code may catch it and do something else with it
-                    // but in reality, if it is thrown, we want to know about it and handle it, even if the Processor code catches it.
-                    final FlowFileAccessInputStream ffais = new FlowFileAccessInputStream(countingIn, source, currClaim);
-                    boolean cnfeThrown = false;
-
-                    writeRecursionLevel++;
-                    try {
-                        writer.process(ffais, new FlowFileAccessOutputStream(countingOut, source));
-                    } catch (final ContentNotFoundException cnfe) {
-                        cnfeThrown = true;
-                        throw cnfe;
-                    } finally {
-                        writeRecursionLevel--;
-                        recursionSet.remove(source);
-
-                        // if cnfeThrown is true, we don't need to re-thrown the Exception; it will propagate.
-                        if (!cnfeThrown && ffais.getContentNotFoundException() != null) {
-                            throw ffais.getContentNotFoundException();
-                        }
-                    }
-                }
-
-                newSize = context.getContentRepository().size(newClaim);
             }
+
+            newSize = context.getContentRepository().size(newClaim);
         } catch (final ContentNotFoundException nfe) {
-            if (appendToClaim) {
-                resetWriteClaims(); // need to reset write claim before we can remove the claim
-            }
             destroyContent(newClaim);
             handleContentNotFound(nfe, record);
         } catch (final IOException ioe) {
-            if (appendToClaim) {
-                resetWriteClaims(); // need to reset write claim before we can remove the claim
-            }
             destroyContent(newClaim);
             throw new ProcessException("IOException thrown from " + connectableDescription + ": " + ioe.toString(), ioe);
         } catch (final FlowFileAccessException ffae) {
-            if (appendToClaim) {
-                resetWriteClaims();
-            }
             destroyContent(newClaim);
             throw ffae;
         } catch (final Throwable t) {
-            if (appendToClaim) {
-                resetWriteClaims(); // need to reset write claim before we can remove the claim
-            }
             destroyContent(newClaim);
             throw t;
         } finally {
@@ -2302,33 +2186,21 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
         final ContentClaim newClaim;
         final long claimOffset;
 
-        final boolean appendToClaim = isMergeContent();
-        if (appendToClaim) {
-            enforceCurrentWriteClaimState();
-            newClaim = currentWriteClaim;
-            claimOffset = currentWriteClaimSize;
-        } else {
-            try {
-                newClaim = context.getContentRepository().create(context.getConnectable().isLossTolerant());
-                claimLog.debug("Creating ContentClaim {} for 'importFrom' for {}", newClaim, destination);
-            } catch (final IOException e) {
-                throw new FlowFileAccessException("Unable to create ContentClaim due to " + e.toString(), e);
-            }
-
-            claimOffset = 0L;
+        try {
+            newClaim = context.getContentRepository().create(context.getConnectable().isLossTolerant());
+            claimLog.debug("Creating ContentClaim {} for 'importFrom' for {}", newClaim, destination);
+        } catch (final IOException e) {
+            throw new FlowFileAccessException("Unable to create ContentClaim due to " + e.toString(), e);
         }
 
+        claimOffset = 0L;
         long newSize = 0L;
         try {
             final boolean append = isMergeContent();
             newSize = context.getContentRepository().importFrom(source, newClaim, append);
             bytesWritten.increment(newSize);
             bytesRead.increment(newSize);
-            currentWriteClaimSize += newSize;
         } catch (final Throwable t) {
-            if (appendToClaim) {
-                resetWriteClaims();
-            }
             destroyContent(newClaim);
             throw new FlowFileAccessException("Failed to import data from " + source + " for " + destination + " due to " + t.toString(), t);
         }
@@ -2351,31 +2223,19 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
         validateRecordState(destination);
         final StandardRepositoryRecord record = records.get(destination);
         ContentClaim newClaim = null;
-        long claimOffset = 0L;
+        final long claimOffset = 0L;
 
         final long newSize;
         final boolean appendToClaim = isMergeContent();
         try {
-            if (appendToClaim) {
-                enforceCurrentWriteClaimState();
-                newClaim = currentWriteClaim;
-                claimOffset = currentWriteClaimSize;
+            try {
+                newClaim = context.getContentRepository().create(context.getConnectable().isLossTolerant());
+                claimLog.debug("Creating ContentClaim {} for 'importFrom' for {}", newClaim, destination);
 
-                final long bytesCopied = StreamUtils.copy(source, currentWriteClaimStream);
-                bytesWritten.increment(bytesCopied);
-                currentWriteClaimSize += bytesCopied;
-                newSize = bytesCopied;
-            } else {
-                try {
-                    newClaim = context.getContentRepository().create(context.getConnectable().isLossTolerant());
-                    claimLog.debug("Creating ContentClaim {} for 'importFrom' for {}", newClaim, destination);
-
-                    newSize = context.getContentRepository().importFrom(source, newClaim, appendToClaim);
-                    bytesWritten.increment(newSize);
-                    currentWriteClaimSize += newSize;
-                } catch (final IOException e) {
-                    throw new FlowFileAccessException("Unable to create ContentClaim due to " + e.toString(), e);
-                }
+                newSize = context.getContentRepository().importFrom(source, newClaim, appendToClaim);
+                bytesWritten.increment(newSize);
+            } catch (final IOException e) {
+                throw new FlowFileAccessException("Unable to create ContentClaim due to " + e.toString(), e);
             }
         } catch (final Throwable t) {
             if (appendToClaim) {

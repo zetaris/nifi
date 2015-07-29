@@ -16,7 +16,6 @@
  */
 package org.apache.nifi.controller.repository.claim;
 
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * <p>
@@ -28,115 +27,89 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public final class StandardContentClaim implements ContentClaim, Comparable<ContentClaim> {
 
-    private final String id;
-    private final String container;
-    private final String section;
-    private final boolean lossTolerant;
-    private final AtomicInteger claimantCount = new AtomicInteger(0);
+    private final ResourceClaim resourceClaim;
     private final int hashCode;
+    private volatile long offset;
+    private volatile long length;
 
-    StandardContentClaim(final String container, final String section, final String id, final boolean lossTolerant) {
-        this.container = container.intern();
-        this.section = section.intern();
-        this.id = id;
-        this.lossTolerant = lossTolerant;
-
-        hashCode = (int) (17 + 19 * (id.hashCode()) + 19 * container.hashCode() + 19 * section.hashCode());
+    public StandardContentClaim(final ResourceClaim resourceClaim, final long offset) {
+        this.resourceClaim = resourceClaim;
+        this.offset = offset;
+        this.length = -1L;
+        this.hashCode = calculateHashCode();
     }
 
-    @Override
-    public boolean isLossTolerant() {
-        return lossTolerant;
+    public void setLength(final long length) {
+        this.length = length;
     }
 
-    /**
-     * @return the unique identifier for this claim
-     */
-    @Override
-    public String getId() {
-        return id;
+    public void setOffset(final long offset) {
+        this.offset = offset;
     }
 
-    /**
-     * @return the container identifier in which this claim is held
-     */
-    @Override
-    public String getContainer() {
-        return container;
-    }
-
-    /**
-     * @return the section within a given container the claim is held
-     */
-    @Override
-    public String getSection() {
-        return section;
-    }
-
-    int getClaimantCount() {
-        return claimantCount.get();
-    }
-
-    int decrementClaimantCount() {
-        return claimantCount.decrementAndGet();
-    }
-
-    int incrementClaimantCount() {
-        return claimantCount.incrementAndGet();
-    }
-
-    /**
-     * Provides the natural ordering for ContentClaim objects. By default they are sorted by their id, then container, then section
-     *
-     * @param other other claim
-     * @return x such that x <=1 if this is less than other;
-     * x=0 if this.equals(other);
-     * x >= 1 if this is greater than other
-     */
-    @Override
-    public int compareTo(final ContentClaim other) {
-        final int idComparison = id.compareTo(other.getId());
-        if (idComparison != 0) {
-            return idComparison;
-        }
-
-        final int containerComparison = container.compareTo(other.getContainer());
-        if (containerComparison != 0) {
-            return containerComparison;
-        }
-
-        return section.compareTo(other.getSection());
-    }
-
-    @Override
-    public boolean equals(final Object other) {
-        if (this == other) {
-            return true;
-        }
-
-        if (other == null) {
-            return false;
-        }
-        if (hashCode != other.hashCode()) {
-            // We check hash code before instanceof because instanceof is fairly expensive and for
-            // StandardContentClaim, calling hashCode() simply returns a pre-calculated value.
-            return false;
-        }
-
-        if (!(other instanceof ContentClaim)) {
-            return false;
-        }
-        final ContentClaim otherClaim = (ContentClaim) other;
-        return id.equals(otherClaim.getId()) && container.equals(otherClaim.getContainer()) && section.equals(otherClaim.getSection());
+    private int calculateHashCode() {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + hashCode;
+        result = prime * result + (int) (length ^ length >>> 32);
+        result = prime * result + (int) (offset ^ offset >>> 32);
+        result = prime * result + (resourceClaim == null ? 0 : resourceClaim.hashCode());
+        return result;
     }
 
     @Override
     public int hashCode() {
-        return hashCode;
+        return this.hashCode;
     }
 
     @Override
-    public String toString() {
-        return "ContentClaim[id=" + id + ", container=" + container + ", section=" + section + "]";
+    public boolean equals(final Object obj) {
+        if (this == obj) {
+            return true;
+        }
+
+        if (obj == null) {
+            return false;
+        }
+
+        if (!(obj instanceof ContentClaim)) {
+            return false;
+        }
+
+        final ContentClaim other = (ContentClaim) obj;
+        if (length != other.getLength()) {
+            return false;
+        }
+
+        if (offset != other.getOffset()) {
+            return false;
+        }
+
+        return resourceClaim.equals(other.getResourceClaim());
+    }
+
+    @Override
+    public int compareTo(final ContentClaim o) {
+        final int resourceComp = resourceClaim.compareTo(o.getResourceClaim());
+        if (resourceComp != 0) {
+            return resourceComp;
+        }
+
+        return Long.compare(offset, o.getOffset());
+    }
+
+    @Override
+    public ResourceClaim getResourceClaim() {
+        return resourceClaim;
+    }
+
+    @Override
+    public long getOffset() {
+        return offset;
+    }
+
+    @Override
+    public long getLength() {
+        return length;
     }
 }
