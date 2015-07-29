@@ -2200,7 +2200,7 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
             if (newClaim != null) {
                 destroyContent(newClaim);
             }
-            
+
             throw new FlowFileAccessException("Failed to import data from " + source + " for " + destination + " due to " + t.toString(), t);
         }
 
