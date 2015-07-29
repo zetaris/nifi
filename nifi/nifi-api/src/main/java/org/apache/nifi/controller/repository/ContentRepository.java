@@ -24,7 +24,7 @@ import java.util.Collection;
 import java.util.Set;
 
 import org.apache.nifi.controller.repository.claim.ContentClaim;
-import org.apache.nifi.controller.repository.claim.ContentClaimManager;
+import org.apache.nifi.controller.repository.claim.ResourceClaimManager;
 
 /**
  * Defines the capabilities of a content repository. Append options are not
@@ -42,7 +42,7 @@ public interface ContentRepository {
      * @param claimManager to handle claims
      * @throws java.io.IOException if unable to init
      */
-    void initialize(ContentClaimManager claimManager) throws IOException;
+    void initialize(ResourceClaimManager claimManager) throws IOException;
 
     /**
      * Shuts down the Content Repository, freeing any resources that may be
