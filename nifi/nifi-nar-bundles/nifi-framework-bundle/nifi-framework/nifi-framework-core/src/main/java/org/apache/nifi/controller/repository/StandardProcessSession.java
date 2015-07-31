@@ -1880,8 +1880,6 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
     public FlowFile write(final FlowFile source, final OutputStreamCallback writer) {
         validateRecordState(source);
         final StandardRepositoryRecord record = records.get(source);
-        long newSize = 0L;
-        final long claimOffset = 0L;
 
         ContentClaim newClaim = null;
         final LongHolder writtenHolder = new LongHolder(0L);
@@ -1898,7 +1896,6 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
             } finally {
                 recursionSet.remove(source);
             }
-            newSize = context.getContentRepository().size(newClaim);
         } catch (final ContentNotFoundException nfe) {
             resetWriteClaims(); // need to reset write claim before we can remove the claim
             destroyContent(newClaim);
@@ -1920,7 +1917,13 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
         }
 
         removeTemporaryClaim(record);
-        final FlowFileRecord newFile = new StandardFlowFileRecord.Builder().fromFlowFile(record.getCurrent()).contentClaim(newClaim).contentClaimOffset(claimOffset).size(newSize).build();
+        final FlowFileRecord newFile = new StandardFlowFileRecord.Builder()
+        	.fromFlowFile(record.getCurrent())
+        	.contentClaim(newClaim)
+        	.contentClaimOffset(0)
+        	.size(writtenHolder.getValue())
+        	.build();
+
         record.setWorking(newFile);
         return newFile;
     }
@@ -2068,8 +2071,6 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
         final ContentClaim currClaim = record.getCurrentClaim();
 
         ContentClaim newClaim = null;
-        long newSize = 0L;
-        final long claimOffset = 0L;
         final LongHolder writtenHolder = new LongHolder(0L);
         try {
             newClaim = context.getContentRepository().create(context.getConnectable().isLossTolerant());
@@ -2109,8 +2110,6 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
                     }
                 }
             }
-
-            newSize = context.getContentRepository().size(newClaim);
         } catch (final ContentNotFoundException nfe) {
             destroyContent(newClaim);
             handleContentNotFound(nfe, record);
@@ -2128,7 +2127,13 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
         }
 
         removeTemporaryClaim(record);
-        final FlowFileRecord newFile = new StandardFlowFileRecord.Builder().fromFlowFile(record.getCurrent()).contentClaim(newClaim).contentClaimOffset(claimOffset).size(newSize).build();
+        final FlowFileRecord newFile = new StandardFlowFileRecord.Builder()
+        	.fromFlowFile(record.getCurrent())
+        	.contentClaim(newClaim)
+        	.contentClaimOffset(0L)
+        	.size(writtenHolder.getValue())
+        	.build();
+
         record.setWorking(newFile);
         return newFile;
     }
@@ -2157,7 +2162,7 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
         claimOffset = 0L;
         long newSize = 0L;
         try {
-            newSize = context.getContentRepository().importFrom(source, newClaim, false);
+            newSize = context.getContentRepository().importFrom(source, newClaim);
             bytesWritten.increment(newSize);
             bytesRead.increment(newSize);
         } catch (final Throwable t) {
@@ -2191,7 +2196,7 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
                 newClaim = context.getContentRepository().create(context.getConnectable().isLossTolerant());
                 claimLog.debug("Creating ContentClaim {} for 'importFrom' for {}", newClaim, destination);
 
-                newSize = context.getContentRepository().importFrom(source, newClaim, false);
+                newSize = context.getContentRepository().importFrom(source, newClaim);
                 bytesWritten.increment(newSize);
             } catch (final IOException e) {
                 throw new FlowFileAccessException("Unable to create ContentClaim due to " + e.toString(), e);

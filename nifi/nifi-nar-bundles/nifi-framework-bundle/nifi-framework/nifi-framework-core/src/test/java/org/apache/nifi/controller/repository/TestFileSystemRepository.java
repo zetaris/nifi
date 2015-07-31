@@ -36,10 +36,8 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
 
 import org.apache.nifi.controller.repository.claim.ContentClaim;
-import org.apache.nifi.controller.repository.claim.ResourceClaim;
 import org.apache.nifi.controller.repository.claim.StandardResourceClaimManager;
 import org.apache.nifi.controller.repository.util.DiskUtils;
 import org.apache.nifi.stream.io.StreamUtils;
@@ -136,54 +134,6 @@ public class TestFileSystemRepository {
         assertNotSame(claim1.getResourceClaim(), claim2.getResourceClaim());
     }
 
-    @Test
-    public void testRewriteContentClaim() throws IOException {
-        final ContentClaim claim1 = repository.create(false);
-        assertEquals(1, repository.getClaimantCount(claim1));
-
-        try (final OutputStream out = repository.write(claim1)) {
-            out.write("abc".getBytes());
-        }
-        assertEquals(1, repository.getClaimantCount(claim1));
-
-        try (final OutputStream out = repository.write(claim1)) {
-            out.write("cba".getBytes());
-        }
-        assertEquals(1, repository.getClaimantCount(claim1));
-
-        try (final InputStream in = repository.read(claim1)) {
-            assertEquals('c', in.read());
-            assertEquals('b', in.read());
-            assertEquals('a', in.read());
-        }
-        assertEquals(1, repository.getClaimantCount(claim1));
-
-        assertEquals(3, repository.size(claim1));
-
-        final byte[] oneMB = new byte[1024 * 1024 - 6];
-        new Random().nextBytes(oneMB);
-        try (final OutputStream out = repository.write(claim1)) {
-            out.write(oneMB);
-        }
-        assertEquals(1, repository.getClaimantCount(claim1));
-
-        assertEquals(1024 * 1024 - 6, repository.size(claim1));
-        try (final InputStream in = repository.read(claim1)) {
-            final byte[] buff = new byte[oneMB.length];
-            StreamUtils.fillBuffer(in, buff);
-            assertTrue(Arrays.equals(buff, oneMB));
-        }
-
-        final ResourceClaim resourceClaim = claim1.getResourceClaim();
-        final Path path = rootFile.toPath().resolve(resourceClaim.getSection()).resolve(resourceClaim.getId());
-        assertTrue(Files.exists(path));
-        assertEquals(0, repository.decrementClaimantCount(claim1));
-        assertTrue(repository.remove(claim1));
-        assertFalse(Files.exists(path));
-
-        final ContentClaim claim2 = repository.create(false);
-        assertNotSame(claim1.getResourceClaim(), claim2.getResourceClaim());
-    }
 
     @Test
     public void testWriteWithNoContent() throws IOException {
@@ -292,32 +242,6 @@ public class TestFileSystemRepository {
         assertTrue(Arrays.equals(expected, baos.toByteArray()));
     }
 
-    @Test
-    public void testImportFromFileWithAppend() throws IOException {
-        final ContentClaim claim = repository.create(false);
-        final File hello = new File("src/test/resources/hello.txt");
-        final File goodbye = new File("src/test/resources/bye.txt");
-
-        repository.importFrom(hello.toPath(), claim, true);
-        assertContentEquals(claim, "Hello, World");
-
-        repository.importFrom(goodbye.toPath(), claim, true);
-        assertContentEquals(claim, "Hello, WorldGood-Bye, World!");
-
-        repository.importFrom(hello.toPath(), claim, true);
-        assertContentEquals(claim, "Hello, WorldGood-Bye, World!Hello, World");
-
-        repository.importFrom(goodbye.toPath(), claim, false);
-        assertContentEquals(claim, "Good-Bye, World!");
-    }
-
-    private void assertContentEquals(final ContentClaim claim, final String expected) throws IOException {
-        final ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        try (final InputStream in = repository.read(claim)) {
-            StreamUtils.copy(in, baos);
-        }
-        assertEquals(expected, new String(baos.toByteArray()));
-    }
 
     @Test
     public void testImportFromStream() throws IOException {

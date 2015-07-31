@@ -764,7 +764,7 @@ public class FileSystemRepository implements ContentRepository {
 
         // see javadocs for claim.getLength() as to why we do this.
         if (claim.getLength() < 0) {
-            return Files.size(getPath(claim, true));
+			return Files.size(getPath(claim, true)) - claim.getOffset();
         }
 
         return claim.getLength();
@@ -806,6 +806,9 @@ public class FileSystemRepository implements ContentRepository {
         }
 
         final StandardContentClaim scc = (StandardContentClaim) claim;
+        if (claim.getLength() > 0) {
+            throw new IllegalArgumentException("Cannot write to " + claim + " because it has already been written to.");
+        }
 
         // we always append because there may be another ContentClaim using the same resource claim.
         // However, we know that we will never write to the same claim from two different threads
@@ -823,7 +826,6 @@ public class FileSystemRepository implements ContentRepository {
                 initialLength = Math.max(0, scc.getLength());
             } else {
                 initialLength = 0;
-                scc.setOffset(claimStream.getBytesWritten());
             }
         }
 
@@ -936,10 +938,11 @@ public class FileSystemRepository implements ContentRepository {
                         writableClaimStreams.put(scc.getResourceClaim(), bcos);
                         LOG.debug("Claim length less than max; Adding {} back to writableClaimStreams", this);
                     } else {
-                        writableClaimStreams.remove(scc.getResourceClaim());
                         bcos.close();
 
-                        LOG.debug("Claim length less than max; Closing {}", this);
+						LOG.debug(
+								"Claim length less than max; Closing {} because could not add back to queue",
+								this);
                         if (LOG.isTraceEnabled()) {
                             LOG.trace("Stack trace: ", new RuntimeException("Stack Trace for closing " + this));
                         }
@@ -947,7 +950,7 @@ public class FileSystemRepository implements ContentRepository {
                 } else {
                     // we've reached the limit for this claim. Don't add it back to our queue.
                     // Instead, just remove it and move on.
-                    writableClaimStreams.remove(scc.getResourceClaim());
+
                     // ensure that the claim is no longer on the queue
                     writableClaimQueue.remove(new ClaimLengthPair(scc.getResourceClaim(), resourceClaimLength));
                     bcos.close();
