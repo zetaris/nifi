@@ -28,38 +28,28 @@ package org.apache.nifi.controller.repository.claim;
 public final class StandardContentClaim implements ContentClaim, Comparable<ContentClaim> {
 
     private final ResourceClaim resourceClaim;
-    private final int hashCode;
-    private volatile long offset;
+    private final long offset;
     private volatile long length;
 
     public StandardContentClaim(final ResourceClaim resourceClaim, final long offset) {
         this.resourceClaim = resourceClaim;
         this.offset = offset;
         this.length = -1L;
-        this.hashCode = calculateHashCode();
     }
 
     public void setLength(final long length) {
         this.length = length;
     }
 
-    public void setOffset(final long offset) {
-        this.offset = offset;
-    }
-
-    private int calculateHashCode() {
+	@Override
+	public int hashCode() {
         final int prime = 31;
         int result = 1;
-        result = prime * result + hashCode;
+		result = prime * result;
         result = prime * result + (int) (length ^ length >>> 32);
         result = prime * result + (int) (offset ^ offset >>> 32);
         result = prime * result + (resourceClaim == null ? 0 : resourceClaim.hashCode());
         return result;
-    }
-
-    @Override
-    public int hashCode() {
-        return this.hashCode;
     }
 
     @Override

@@ -173,9 +173,13 @@ public interface ContentRepository {
      * @param content to import from
      * @param claim the claim to write imported content to
      * @param append if true, the content will be appended to the claim; if
-     * false, the content will replace the contents of the claim
+     *        false, the content will replace the contents of the claim
      * @throws IOException if unable to read content
+     *
+     * @deprecated if needing to append to a content claim, the contents of the claim should be
+     *             copied to a new claim and then the data to append should be written to that new claim.
      */
+    @Deprecated
     long importFrom(Path content, ContentClaim claim, boolean append) throws IOException;
 
     /**
@@ -198,7 +202,11 @@ public interface ContentRepository {
      * @param append whether to append or replace
      * @return length of data imported in bytes
      * @throws IOException if failure to read or write stream
+     *
+     * @deprecated if needing to append to a content claim, the contents of the claim should be
+     * copied to a new claim and then the data to append should be written to that new claim.
      */
+    @Deprecated
     long importFrom(InputStream content, ContentClaim claim, boolean append) throws IOException;
 
     /**

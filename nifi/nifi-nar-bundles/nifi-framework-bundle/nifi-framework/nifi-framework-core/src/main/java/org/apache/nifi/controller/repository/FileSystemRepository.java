@@ -67,6 +67,7 @@ import org.apache.nifi.controller.repository.io.LimitedInputStream;
 import org.apache.nifi.engine.FlowEngine;
 import org.apache.nifi.stream.io.ByteCountingOutputStream;
 import org.apache.nifi.stream.io.StreamUtils;
+import org.apache.nifi.stream.io.SynchronizedByteCountingOutputStream;
 import org.apache.nifi.util.FormatUtils;
 import org.apache.nifi.util.LongHolder;
 import org.apache.nifi.util.NiFiProperties;
@@ -764,7 +765,7 @@ public class FileSystemRepository implements ContentRepository {
 
         // see javadocs for claim.getLength() as to why we do this.
         if (claim.getLength() < 0) {
-            return Files.size(getPath(claim, true));
+			return Files.size(getPath(claim, true)) - claim.getOffset();
         }
 
         return claim.getLength();
@@ -806,6 +807,9 @@ public class FileSystemRepository implements ContentRepository {
         }
 
         final StandardContentClaim scc = (StandardContentClaim) claim;
+        if (claim.getLength() > 0) {
+            throw new IllegalArgumentException("Cannot write to " + claim + " because it has already been written to.");
+        }
 
         // we always append because there may be another ContentClaim using the same resource claim.
         // However, we know that we will never write to the same claim from two different threads
@@ -816,14 +820,14 @@ public class FileSystemRepository implements ContentRepository {
         final long initialLength;
         if (claimStream == null) {
             final File file = getPath(scc).toFile();
-            claimStream = new ByteCountingOutputStream(new FileOutputStream(file, true), file.length());
+            // use a synchronized stream because we want to pass this OutputStream out from one thread to another.
+            claimStream = new SynchronizedByteCountingOutputStream(new FileOutputStream(file, true), file.length());
             initialLength = 0L;
         } else {
             if (append) {
                 initialLength = Math.max(0, scc.getLength());
             } else {
                 initialLength = 0;
-                scc.setOffset(claimStream.getBytesWritten());
             }
         }
 
@@ -924,22 +928,15 @@ public class FileSystemRepository implements ContentRepository {
                     // the queue because we need to ensure that the latter operation does not cause problems
                     // with the former.
                     final ClaimLengthPair pair = new ClaimLengthPair(scc.getResourceClaim(), resourceClaimLength);
-                    final boolean enqueued;
-                    if (writableClaimQueue.contains(pair)) {
-                        // may already exist on the queue, if the content claim is written to multiple times.
-                        enqueued = true;
-                    } else {
-                        enqueued = writableClaimQueue.offer(pair);
-                    }
+                    final boolean enqueued = writableClaimQueue.offer(pair);
 
                     if (enqueued) {
                         writableClaimStreams.put(scc.getResourceClaim(), bcos);
                         LOG.debug("Claim length less than max; Adding {} back to writableClaimStreams", this);
                     } else {
-                        writableClaimStreams.remove(scc.getResourceClaim());
                         bcos.close();
 
-                        LOG.debug("Claim length less than max; Closing {}", this);
+                        LOG.debug("Claim length less than max; Closing {} because could not add back to queue", this);
                         if (LOG.isTraceEnabled()) {
                             LOG.trace("Stack trace: ", new RuntimeException("Stack Trace for closing " + this));
                         }
@@ -947,7 +944,7 @@ public class FileSystemRepository implements ContentRepository {
                 } else {
                     // we've reached the limit for this claim. Don't add it back to our queue.
                     // Instead, just remove it and move on.
-                    writableClaimStreams.remove(scc.getResourceClaim());
+
                     // ensure that the claim is no longer on the queue
                     writableClaimQueue.remove(new ClaimLengthPair(scc.getResourceClaim(), resourceClaimLength));
                     bcos.close();
