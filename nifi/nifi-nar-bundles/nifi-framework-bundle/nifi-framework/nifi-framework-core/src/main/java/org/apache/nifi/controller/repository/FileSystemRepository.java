@@ -765,7 +765,7 @@ public class FileSystemRepository implements ContentRepository {
 
         // see javadocs for claim.getLength() as to why we do this.
         if (claim.getLength() < 0) {
-			return Files.size(getPath(claim, true)) - claim.getOffset();
+            return Files.size(getPath(claim, true)) - claim.getOffset();
         }
 
         return claim.getLength();

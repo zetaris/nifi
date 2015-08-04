@@ -41,11 +41,11 @@ public final class StandardContentClaim implements ContentClaim, Comparable<Cont
         this.length = length;
     }
 
-	@Override
-	public int hashCode() {
+    @Override
+    public int hashCode() {
         final int prime = 31;
         int result = 1;
-		result = prime * result;
+        result = prime * result;
         result = prime * result + (int) (length ^ length >>> 32);
         result = prime * result + (int) (offset ^ offset >>> 32);
         result = prime * result + (resourceClaim == null ? 0 : resourceClaim.hashCode());
