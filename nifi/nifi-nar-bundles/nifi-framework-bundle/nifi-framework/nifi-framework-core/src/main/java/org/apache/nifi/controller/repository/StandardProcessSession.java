@@ -1918,11 +1918,11 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
 
         removeTemporaryClaim(record);
         final FlowFileRecord newFile = new StandardFlowFileRecord.Builder()
-        	.fromFlowFile(record.getCurrent())
-        	.contentClaim(newClaim)
-        	.contentClaimOffset(0)
-        	.size(writtenHolder.getValue())
-        	.build();
+            .fromFlowFile(record.getCurrent())
+            .contentClaim(newClaim)
+            .contentClaimOffset(0)
+            .size(writtenHolder.getValue())
+            .build();
 
         record.setWorking(newFile);
         return newFile;
@@ -2128,11 +2128,11 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
 
         removeTemporaryClaim(record);
         final FlowFileRecord newFile = new StandardFlowFileRecord.Builder()
-        	.fromFlowFile(record.getCurrent())
-        	.contentClaim(newClaim)
-        	.contentClaimOffset(0L)
-        	.size(writtenHolder.getValue())
-        	.build();
+            .fromFlowFile(record.getCurrent())
+            .contentClaim(newClaim)
+            .contentClaimOffset(0L)
+            .size(writtenHolder.getValue())
+            .build();
 
         record.setWorking(newFile);
         return newFile;
