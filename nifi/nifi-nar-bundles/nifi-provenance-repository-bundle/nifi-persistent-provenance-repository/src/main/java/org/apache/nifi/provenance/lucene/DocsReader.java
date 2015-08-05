@@ -30,17 +30,17 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.lucene.document.Document;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TopDocs;
 import org.apache.nifi.provenance.ProvenanceEventRecord;
 import org.apache.nifi.provenance.SearchableFields;
 import org.apache.nifi.provenance.StandardProvenanceEventRecord;
 import org.apache.nifi.provenance.serialization.RecordReader;
 import org.apache.nifi.provenance.serialization.RecordReaders;
 import org.apache.nifi.provenance.toc.TocReader;
-import org.apache.lucene.document.Document;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexableField;
-import org.apache.lucene.search.ScoreDoc;
-import org.apache.lucene.search.TopDocs;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -108,6 +108,7 @@ public class DocsReader {
     }
 
 
+    @SuppressWarnings("resource")
     public Set<ProvenanceEventRecord> read(final List<Document> docs, final Collection<Path> allProvenanceLogFiles,
         final AtomicInteger retrievalCount, final int maxResults, final int maxAttributeChars) throws IOException {
         if (retrievalCount.get() >= maxResults) {
@@ -124,6 +125,7 @@ public class DocsReader {
         int logFileCount = 0;
 
         final Set<String> storageFilesToSkip = new HashSet<>();
+        int eventsReadThisFile = 0;
 
         try {
             for (final Document d : docs) {
@@ -135,6 +137,7 @@ public class DocsReader {
                 try {
                     if (reader != null && storageFilename.equals(lastStorageFilename)) {
                         matchingRecords.add(getRecord(d, reader));
+                        eventsReadThisFile++;
 
                         if ( retrievalCount.incrementAndGet() >= maxResults ) {
                             break;
@@ -162,8 +165,13 @@ public class DocsReader {
 
                         for (final File file : potentialFiles) {
                             try {
+                                if (reader != null) {
+                                    logger.debug("Read {} records from previous file", eventsReadThisFile);
+                                }
+
                                 reader = RecordReaders.newRecordReader(file, allProvenanceLogFiles, maxAttributeChars);
                                 matchingRecords.add(getRecord(d, reader));
+                                eventsReadThisFile = 1;
 
                                 if ( retrievalCount.incrementAndGet() >= maxResults ) {
                                     break;
@@ -183,6 +191,7 @@ public class DocsReader {
             }
         }
 
+        logger.debug("Read {} records from previous file", eventsReadThisFile);
         final long millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
         logger.debug("Took {} ms to read {} events from {} prov log files", millis, matchingRecords.size(), logFileCount);
 
