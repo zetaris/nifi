@@ -297,31 +297,23 @@ public class SplitAvro extends AbstractProcessor {
 
                                         writer.setCodec(CodecFactory.fromString(codec.get()));
                                         writer.create(reader.getSchema(), out);
-                                        writer.sync();
 
                                         // we already read the first block so update the count and append that block
                                         long recordCount = reader.getBlockCount();
-                                        //writer.appendEncoded(outerBlock.get());
-                                        out.write(outerBlock.get().array());
-                                        writer.sync();
+                                        writer.appendEncoded(outerBlock.get());
 
                                         if (recordCount < splitSize) {
                                             try {
                                                 // now loop again until no more blocks or we reached the split size
                                                 final ObjectHolder<ByteBuffer> innerBlock = new ObjectHolder<>(reader.nextBlock());
                                                 while (innerBlock.get() != null && recordCount < splitSize) {
-                                                    //writer.appendEncoded(innerBlock.get());
-                                                    out.write(innerBlock.get().array());
-                                                    writer.sync();
-
+                                                    writer.appendEncoded(innerBlock.get());
                                                     recordCount += reader.getBlockCount();
                                                     innerBlock.set(reader.nextBlock());
                                                 }
 
                                                 if (innerBlock.get() != null) {
-                                                    //writer.appendEncoded(innerBlock.get());
-                                                    out.write(innerBlock.get().array());
-                                                    writer.sync();
+                                                    writer.appendEncoded(innerBlock.get());
                                                 }
                                             } catch (NoSuchElementException e) {
                                                 getLogger().debug("Reached end of datafile for {}", new Object[]{originalFlowFile});
