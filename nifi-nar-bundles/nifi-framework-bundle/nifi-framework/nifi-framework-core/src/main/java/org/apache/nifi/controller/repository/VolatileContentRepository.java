@@ -50,6 +50,7 @@ import org.apache.nifi.processor.DataUnit;
 import org.apache.nifi.stream.io.ByteArrayInputStream;
 import org.apache.nifi.stream.io.StreamUtils;
 import org.apache.nifi.util.NiFiProperties;
+import org.apache.nifi.util.file.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -407,8 +408,12 @@ public class VolatileContentRepository implements ContentRepository {
     @Override
     public long exportTo(ContentClaim claim, OutputStream destination, long offset, long length) throws IOException {
         final InputStream in = read(claim);
+        try {
         StreamUtils.skip(in, offset);
         StreamUtils.copy(in, destination, length);
+        } finally {
+            FileUtils.closeQuietly(in);
+        }
         return length;
     }
 
