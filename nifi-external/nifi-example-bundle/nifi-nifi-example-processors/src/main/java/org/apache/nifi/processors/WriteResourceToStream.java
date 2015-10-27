@@ -17,6 +17,7 @@
 package org.apache.nifi.processors;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Collections;
 import java.util.HashSet;
@@ -34,6 +35,7 @@ import org.apache.nifi.processor.ProcessorInitializationContext;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.io.OutputStreamCallback;
+import org.apache.nifi.util.file.FileUtils;
 
 @Tags({ "example", "resources" })
 @CapabilityDescription("This example processor loads a resource from the nar and writes it to the FlowFile content")
@@ -57,13 +59,16 @@ public class WriteResourceToStream extends AbstractProcessor {
         relationships.add(REL_SUCCESS);
         relationships.add(REL_FAILURE);
         this.relationships = Collections.unmodifiableSet(relationships);
-
+        final InputStream resourceStream = Thread.currentThread()
+                .getContextClassLoader().getResourceAsStream("file.txt");
         try {
-            this.resourceData = IOUtils.toString(Thread.currentThread()
-                    .getContextClassLoader().getResourceAsStream("file.txt"));
+            this.resourceData = IOUtils.toString(resourceStream);
         } catch (IOException e) {
             throw new RuntimeException("Unable to load resources", e);
+        } finally {
+            FileUtils.closeQuietly(resourceStream);
         }
+
     }
 
     @Override

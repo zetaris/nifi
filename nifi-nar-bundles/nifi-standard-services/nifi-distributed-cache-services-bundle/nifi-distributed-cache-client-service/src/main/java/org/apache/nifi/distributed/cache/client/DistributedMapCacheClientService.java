@@ -40,6 +40,7 @@ import org.apache.nifi.ssl.SSLContextService;
 import org.apache.nifi.ssl.SSLContextService.ClientAuth;
 import org.apache.nifi.stream.io.ByteArrayOutputStream;
 import org.apache.nifi.stream.io.DataOutputStream;
+import org.apache.nifi.util.file.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -298,27 +299,19 @@ public class DistributedMapCacheClientService extends AbstractControllerService 
         if (closed) {
             throw new IllegalStateException("Client is closed");
         }
-
+        boolean tryToRequeue = true;
         final CommsSession session = leaseCommsSession();
         try {
             return action.execute(session);
         } catch (final IOException ioe) {
-            try {
-                session.close();
-            } catch (final IOException ignored) {
-            }
-
+            tryToRequeue = false;
             throw ioe;
         } finally {
-            if (!session.isClosed()) {
-                if (this.closed) {
-                    try {
-                        session.close();
-                    } catch (final IOException ioe) {
-                    }
-                } else {
-                    queue.offer(session);
-                }
+            if (tryToRequeue == true && this.closed == false) {
+                queue.offer(session);
+            }
+            else{
+                FileUtils.closeQuietly(session);
             }
         }
     }
