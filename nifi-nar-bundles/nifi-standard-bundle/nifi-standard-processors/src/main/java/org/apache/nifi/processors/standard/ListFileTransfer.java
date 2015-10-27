@@ -29,6 +29,7 @@ import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.processors.standard.util.FileInfo;
 import org.apache.nifi.processors.standard.util.FileTransfer;
+import org.apache.nifi.util.file.FileUtils;
 
 public abstract class ListFileTransfer extends AbstractListProcessor<FileInfo> {
     public static final PropertyDescriptor HOSTNAME = new PropertyDescriptor.Builder()
@@ -93,6 +94,7 @@ public abstract class ListFileTransfer extends AbstractListProcessor<FileInfo> {
     protected List<FileInfo> performListing(final ProcessContext context, final Long minTimestamp) throws IOException {
         final FileTransfer transfer = getFileTransfer(context);
         final List<FileInfo> listing = transfer.getListing();
+        FileUtils.closeQuietly(transfer);
         if (minTimestamp == null) {
             return listing;
         }
