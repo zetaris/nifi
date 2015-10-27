@@ -38,8 +38,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+
 import javax.servlet.DispatcherType;
 import javax.servlet.ServletContext;
+
 import org.apache.nifi.NiFiServer;
 import org.apache.nifi.controller.FlowSerializationException;
 import org.apache.nifi.controller.FlowSynchronizationException;
@@ -49,6 +51,7 @@ import org.apache.nifi.nar.ExtensionMapping;
 import org.apache.nifi.nar.NarClassLoaders;
 import org.apache.nifi.services.FlowService;
 import org.apache.nifi.util.NiFiProperties;
+import org.apache.nifi.util.file.FileUtils;
 import org.apache.nifi.web.NiFiWebContext;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -438,6 +441,7 @@ public class JettyServer implements NiFiServer {
     private List<String> getWarExtensions(final File war, final String path) {
         List<String> processorTypes = new ArrayList<>();
         JarFile jarFile = null;
+        BufferedReader in = null;
         try {
             // load the jar file and attempt to find the nifi-processor entry
             jarFile = new JarFile(war);
@@ -446,7 +450,7 @@ public class JettyServer implements NiFiServer {
             // ensure the nifi-processor entry was found
             if (jarEntry != null) {
                 // get an input stream for the nifi-processor configuration file
-                BufferedReader in = new BufferedReader(new InputStreamReader(jarFile.getInputStream(jarEntry)));
+                in = new BufferedReader(new InputStreamReader(jarFile.getInputStream(jarEntry)));
 
                 // read in each configured type
                 String rawProcessorType;
@@ -461,12 +465,13 @@ public class JettyServer implements NiFiServer {
         } catch (IOException ioe) {
             logger.warn(String.format("Unable to inspect %s for a custom processor UI.", war));
         } finally {
-            try {
-                // close the jar file - which closes all input streams obtained via getInputStream above
-                if (jarFile != null) {
-                    jarFile.close();
-                }
-            } catch (IOException ioe) {
+            // close the jar file - which closes all input streams obtained via getInputStream above
+            if (jarFile != null) {
+                FileUtils.closeQuietly(jarFile);
+            }
+            // close the BufferedReader, this may not be strictly necessary
+            if (in != null){
+                FileUtils.closeQuietly(in);
             }
         }
 
