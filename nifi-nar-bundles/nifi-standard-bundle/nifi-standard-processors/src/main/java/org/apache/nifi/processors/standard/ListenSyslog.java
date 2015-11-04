@@ -90,6 +90,7 @@ import org.apache.nifi.stream.io.ByteArrayOutputStream;
                     @WritesAttribute(attribute="syslog.valid", description="An indicator of whether this message matched the expected formats. " +
                             "If this value is false, the other attributes will be empty and only the original message will be available in the content."),
                     @WritesAttribute(attribute="syslog.protocol", description="The protocol over which the Syslog message was received."),
+                    @WritesAttribute(attribute="syslog.port", description="The port over which the Syslog message was received."),
                     @WritesAttribute(attribute="mime.type", description="The mime.type of the FlowFile which will be text/plain for Syslog messages.")})
 public class ListenSyslog extends AbstractSyslogProcessor {
 
@@ -144,8 +145,8 @@ public class ListenSyslog extends AbstractSyslogProcessor {
         descriptors.add(PORT);
         descriptors.add(RECV_BUFFER_SIZE);
         descriptors.add(MAX_SOCKET_BUFFER_SIZE);
-        descriptors.add(CHARSET);
         descriptors.add(MAX_CONNECTIONS);
+        descriptors.add(CHARSET);
         this.descriptors = Collections.unmodifiableList(descriptors);
 
         final Set<Relationship> relationships = new HashSet<>();
@@ -254,6 +255,7 @@ public class ListenSyslog extends AbstractSyslogProcessor {
         attributes.put(SyslogAttributes.BODY.key(), event.getMsgBody());
         attributes.put(SyslogAttributes.VALID.key(), String.valueOf(event.isValid()));
         attributes.put(SyslogAttributes.PROTOCOL.key(), context.getProperty(PROTOCOL).getValue());
+        attributes.put(SyslogAttributes.PORT.key(), context.getProperty(PORT).getValue());
         attributes.put(CoreAttributes.MIME_TYPE.key(), "text/plain");
 
         FlowFile flowFile = session.create();
@@ -457,7 +459,8 @@ public class ListenSyslog extends AbstractSyslogProcessor {
                                 // Check for available connections
                                 if (currentConnections.incrementAndGet() > maxConnections){
                                     currentConnections.decrementAndGet();
-                                    logger.info("Rejecting connection from {} because max connections has been met", new Object[]{ socketChannel.getRemoteAddress().toString() });
+                                    logger.warn("Rejecting connection from {} because max connections has been met",
+                                            new Object[]{ socketChannel.getRemoteAddress().toString() });
                                     IOUtils.closeQuietly(socketChannel);
                                     continue;
                                 }

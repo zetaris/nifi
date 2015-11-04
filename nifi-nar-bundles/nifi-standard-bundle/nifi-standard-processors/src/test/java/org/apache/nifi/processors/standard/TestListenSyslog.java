@@ -89,7 +89,7 @@ public class TestListenSyslog {
             Assert.assertEquals("Did not process all the datagrams", numMessages, numTransfered);
 
             MockFlowFile flowFile = runner.getFlowFilesForRelationship(ListenSyslog.REL_SUCCESS).get(0);
-            checkFlowFile(flowFile);
+            checkFlowFile(flowFile, 0, ListenSyslog.UDP_VALUE.getValue());
 
         } finally {
             // unschedule to close connections
@@ -131,7 +131,7 @@ public class TestListenSyslog {
             Assert.assertEquals("Did not process all the messages", numMessages, numTransfered);
 
             MockFlowFile flowFile = runner.getFlowFilesForRelationship(ListenSyslog.REL_SUCCESS).get(0);
-            checkFlowFile(flowFile);
+            checkFlowFile(flowFile, 0, ListenSyslog.TCP_VALUE.getValue());
         } finally {
             // unschedule to close connections
             proc.onUnscheduled();
@@ -173,7 +173,7 @@ public class TestListenSyslog {
             Assert.assertEquals("Did not process all the messages", numMessages, numTransfered);
 
             MockFlowFile flowFile = runner.getFlowFilesForRelationship(ListenSyslog.REL_SUCCESS).get(0);
-            checkFlowFile(flowFile);
+            checkFlowFile(flowFile, 0, ListenSyslog.TCP_VALUE.getValue());
         } finally {
             // unschedule to close connections
             proc.onUnscheduled();
@@ -244,7 +244,7 @@ public class TestListenSyslog {
     }
 
 
-    private void checkFlowFile(MockFlowFile flowFile) {
+    private void checkFlowFile(MockFlowFile flowFile, int port, String protocol) {
         flowFile.assertContentEquals(VALID_MESSAGE);
         Assert.assertEquals(PRI, flowFile.getAttribute(ListenSyslog.SyslogAttributes.PRIORITY.key()));
         Assert.assertEquals(SEV, flowFile.getAttribute(ListenSyslog.SyslogAttributes.SEVERITY.key()));
@@ -253,6 +253,8 @@ public class TestListenSyslog {
         Assert.assertEquals(HOST, flowFile.getAttribute(ListenSyslog.SyslogAttributes.HOSTNAME.key()));
         Assert.assertEquals(BODY, flowFile.getAttribute(ListenSyslog.SyslogAttributes.BODY.key()));
         Assert.assertEquals("true", flowFile.getAttribute(ListenSyslog.SyslogAttributes.VALID.key()));
+        Assert.assertEquals(String.valueOf(port), flowFile.getAttribute(ListenSyslog.SyslogAttributes.PORT.key()));
+        Assert.assertEquals(protocol, flowFile.getAttribute(ListenSyslog.SyslogAttributes.PROTOCOL.key()));
     }
 
     /**
