@@ -143,6 +143,7 @@ public class TestListenSyslog {
         final ListenSyslog proc = new ListenSyslog();
         final TestRunner runner = TestRunners.newTestRunner(proc);
         runner.setProperty(ListenSyslog.PROTOCOL, ListenSyslog.TCP_VALUE.getValue());
+        runner.setProperty(ListenSyslog.MAX_CONNECTIONS, "5");
         runner.setProperty(ListenSyslog.PORT, "0");
 
         // schedule to start listening on a random port
@@ -210,6 +211,8 @@ public class TestListenSyslog {
                 proc.onTrigger(context, processSessionFactory);
                 numTransfered = runner.getFlowFilesForRelationship(ListenSyslog.REL_INVALID).size();
             }
+
+            // all messages should be transferred to invalid
             Assert.assertEquals("Did not process all the messages", numMessages, numTransfered);
 
         } finally {

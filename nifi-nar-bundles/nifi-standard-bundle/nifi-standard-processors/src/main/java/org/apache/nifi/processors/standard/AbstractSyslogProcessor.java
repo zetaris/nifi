@@ -64,7 +64,8 @@ public abstract class AbstractSyslogProcessor extends AbstractProcessor {
         HOSTNAME("syslog.hostname"),
         SENDER("syslog.sender"),
         BODY("syslog.body"),
-        VALID("syslog.valid");
+        VALID("syslog.valid"),
+        PROTOCOL("syslog.protocol");
 
         private String key;
 
