@@ -46,6 +46,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.nifi.annotation.behavior.InputRequirement;
 import org.apache.nifi.annotation.behavior.WritesAttribute;
 import org.apache.nifi.annotation.behavior.WritesAttributes;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
@@ -69,7 +70,7 @@ import org.apache.nifi.processors.standard.util.SyslogEvent;
 import org.apache.nifi.processors.standard.util.SyslogParser;
 import org.apache.nifi.stream.io.ByteArrayOutputStream;
 
-
+@InputRequirement(InputRequirement.Requirement.INPUT_FORBIDDEN)
 @Tags({"syslog", "listen", "udp", "tcp", "logs"})
 @CapabilityDescription("Listens for Syslog messages being sent to a given port over TCP or UDP. Incoming messages are checked against regular " +
         "expressions for RFC5424 and RFC3164 formatted messages. The format of each message is: (<PRIORITY>)(VERSION )(TIMESTAMP) (HOSTNAME) (BODY) " +
@@ -114,7 +115,7 @@ public class ListenSyslog extends AbstractSyslogProcessor {
             .build();
     public static final PropertyDescriptor MAX_CONNECTIONS = new PropertyDescriptor.Builder()
             .name("Max Number of TCP Connections")
-            .description("The maximum number of concurrent connections to accept syslog messages in TCP mode")
+            .description("The maximum number of concurrent connections to accept Syslog messages in TCP mode.")
             .addValidator(StandardValidators.createLongValidator(1, 65535, true))
             .defaultValue("2")
             .required(true)
@@ -183,14 +184,14 @@ public class ListenSyslog extends AbstractSyslogProcessor {
         final int maxChannelBufferSize = context.getProperty(MAX_SOCKET_BUFFER_SIZE).asDataSize(DataUnit.B).intValue();
         final String protocol = context.getProperty(PROTOCOL).getValue();
         final String charSet = context.getProperty(CHARSET).getValue();
-        final int maxConnections; 
-        
+        final int maxConnections;
+
         if (protocol.equals(UDP_VALUE)) {
             maxConnections = 1;
         } else{
             maxConnections = context.getProperty(MAX_CONNECTIONS).asLong().intValue();
         }
-        
+
         parser = new SyslogParser(Charset.forName(charSet));
         bufferPool = new BufferPool(maxConnections, bufferSize, false, Integer.MAX_VALUE);
         syslogEvents = new LinkedBlockingQueue<>(10);
@@ -243,6 +244,8 @@ public class ListenSyslog extends AbstractSyslogProcessor {
         }
 
         final SyslogEvent event = initialEvent;
+        final String port = context.getProperty(PORT).getValue();
+        final String protocol = context.getProperty(PROTOCOL).getValue();
 
         final Map<String,String> attributes = new HashMap<>();
         attributes.put(SyslogAttributes.PRIORITY.key(), event.getPriority());
@@ -254,12 +257,15 @@ public class ListenSyslog extends AbstractSyslogProcessor {
         attributes.put(SyslogAttributes.SENDER.key(), event.getSender());
         attributes.put(SyslogAttributes.BODY.key(), event.getMsgBody());
         attributes.put(SyslogAttributes.VALID.key(), String.valueOf(event.isValid()));
-        attributes.put(SyslogAttributes.PROTOCOL.key(), context.getProperty(PROTOCOL).getValue());
-        attributes.put(SyslogAttributes.PORT.key(), context.getProperty(PORT).getValue());
+        attributes.put(SyslogAttributes.PROTOCOL.key(), protocol);
+        attributes.put(SyslogAttributes.PORT.key(), port);
         attributes.put(CoreAttributes.MIME_TYPE.key(), "text/plain");
 
         FlowFile flowFile = session.create();
         flowFile = session.putAllAttributes(flowFile, attributes);
+
+        final String transitUri = new StringBuilder().append(protocol).append("://").append(event.getSender())
+                .append(":").append(port).toString();
 
         try {
             // write the raw bytes of the message as the FlowFile content
@@ -273,6 +279,7 @@ public class ListenSyslog extends AbstractSyslogProcessor {
             if (event.isValid()) {
                 getLogger().info("Transferring {} to success", new Object[]{flowFile});
                 session.transfer(flowFile, REL_SUCCESS);
+                session.getProvenanceReporter().receive(flowFile, transitUri);
             } else {
                 getLogger().info("Transferring {} to invalid", new Object[]{flowFile});
                 session.transfer(flowFile, REL_INVALID);
@@ -464,7 +471,7 @@ public class ListenSyslog extends AbstractSyslogProcessor {
                                     IOUtils.closeQuietly(socketChannel);
                                     continue;
                                 }
-                                logger.debug("Accepted incoming connection from {}", 
+                                logger.debug("Accepted incoming connection from {}",
                                         new Object[]{socketChannel.getRemoteAddress().toString()} );
                                 // Set socket to non-blocking, and register with selector
                                 socketChannel.configureBlocking(false);
@@ -478,21 +485,21 @@ public class ListenSyslog extends AbstractSyslogProcessor {
                                 // Clear out the operations the select is interested in until done reading
                                 key.interestOps(0);
                                 // Create and execute the read handler
-                                final SocketChannelHandler handler = new SocketChannelHandler(key, this, 
+                                final SocketChannelHandler handler = new SocketChannelHandler(key, this,
                                         syslogParser, syslogEvents, logger);
                                 // and launch the thread
                                 executor.execute(handler);
                             }
                         }
                     }
-                    // Add back all idle sockets to the select 
+                    // Add back all idle sockets to the select
                     SelectionKey key;
                     while((key = keyQueue.poll()) != null){
                         key.interestOps(SelectionKey.OP_READ);
                     }
                 } catch (IOException e) {
                     logger.error("Error accepting connection from SocketChannel", e);
-                } 
+                }
             }
         }
 
@@ -612,7 +619,7 @@ public class ListenSyslog extends AbstractSyslogProcessor {
                         }
                     }
                     // Preserve bytes in buffer for next call to run
-                    // NOTE: This code could benefit from the  two ByteBuffer read calls to avoid 
+                    // NOTE: This code could benefit from the  two ByteBuffer read calls to avoid
                     //  this compact for higher throughput
                     socketBuffer.reset();
                     socketBuffer.compact();
