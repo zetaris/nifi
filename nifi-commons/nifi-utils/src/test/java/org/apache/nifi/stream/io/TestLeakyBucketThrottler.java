@@ -41,15 +41,16 @@ public class TestLeakyBucketThrottler {
 
         final byte[] data = new byte[1024 * 1024 * 4];
         final ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        final OutputStream throttledOut = throttler.newThrottledOutputStream(baos);
+        try (final OutputStream throttledOut = throttler.newThrottledOutputStream(baos) ){
 
-        final long start = System.currentTimeMillis();
-        throttledOut.write(data);
-        throttler.close();
-        final long millis = System.currentTimeMillis() - start;
-        // should take 4 sec give or take
-        assertTrue(millis > 3000);
-        assertTrue(millis < 6000);
+            final long start = System.currentTimeMillis();
+            throttledOut.write(data);
+            throttler.close();
+            final long millis = System.currentTimeMillis() - start;
+            // should take 4 sec give or take
+            assertTrue(millis > 3000);
+            assertTrue(millis < 6000);
+        }
     }
 
     @Test(timeout = 10000)
@@ -58,23 +59,22 @@ public class TestLeakyBucketThrottler {
         final LeakyBucketStreamThrottler throttler = new LeakyBucketStreamThrottler(1024 * 1024);
 
         final byte[] data = new byte[1024 * 1024 * 4];
-        final ByteArrayInputStream bais = new ByteArrayInputStream(data);
-        final InputStream throttledIn = throttler.newThrottledInputStream(bais);
+        try ( final ByteArrayInputStream bais = new ByteArrayInputStream(data);
+                final InputStream throttledIn = throttler.newThrottledInputStream(bais);
+                final ByteArrayOutputStream baos = new ByteArrayOutputStream() ){
 
-        final ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            final byte[] buffer = new byte[4096];
+            final long start = System.currentTimeMillis();
+            int len;
+            while ((len = throttledIn.read(buffer)) > 0) {
+                baos.write(buffer, 0, len);
+            }
 
-        final byte[] buffer = new byte[4096];
-        final long start = System.currentTimeMillis();
-        int len;
-        while ((len = throttledIn.read(buffer)) > 0) {
-            baos.write(buffer, 0, len);
+            final long millis = System.currentTimeMillis() - start;
+            // should take 4 sec give or take
+            assertTrue(millis > 3000);
+            assertTrue(millis < 6000);
         }
-        throttler.close();
-        final long millis = System.currentTimeMillis() - start;
-        // should take 4 sec give or take
-        assertTrue(millis > 3000);
-        assertTrue(millis < 6000);
-        baos.close();
     }
 
     @Test(timeout = 10000)

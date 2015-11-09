@@ -3402,16 +3402,15 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
                 completionService.submit(new Runnable() {
                     @Override
                     public void run() {
-                        final OutputStream drain = new OutputStream() {
-                            @Override
-                            public void write(final int b) { /* drain response */ }
-                        };
                         try {
-                            ((StreamingOutput) nodeResponse.getResponse().getEntity()).write(drain);
+                            try (final OutputStream drain = new OutputStream() {
+                                @Override
+                                public void write(final int b) { /* drain response */ }
+                            }) {
+                                ((StreamingOutput) nodeResponse.getResponse().getEntity()).write(drain);
+                            }
                         } catch (final IOException | WebApplicationException ex) {
                             logger.info("Failed clearing out non-client response buffer due to: " + ex, ex);
-                        } finally {
-                            FileUtils.closeQuietly(drain);
                         }
                     }
                 }, null);

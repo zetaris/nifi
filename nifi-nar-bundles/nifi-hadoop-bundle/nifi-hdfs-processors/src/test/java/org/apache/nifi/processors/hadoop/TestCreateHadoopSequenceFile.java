@@ -71,9 +71,11 @@ public class TestCreateHadoopSequenceFile {
     }
 
     @Test
-    public void testSimpleCase() throws FileNotFoundException {
+    public void testSimpleCase() throws IOException {
         for (File inFile : inFiles) {
-            controller.enqueue(new FileInputStream(inFile));
+            try (FileInputStream fin = new FileInputStream(inFile) ) {
+                controller.enqueue(fin);
+            }
         }
         controller.run(3);
 
@@ -88,7 +90,9 @@ public class TestCreateHadoopSequenceFile {
     @Test
     public void testSequenceFileSaysValueIsBytesWritable() throws UnsupportedEncodingException, IOException {
         for (File inFile : inFiles) {
-            controller.enqueue(new FileInputStream(inFile));
+            try (FileInputStream fin = new FileInputStream(inFile) ){
+                controller.enqueue();
+            }
         }
         controller.run(3);
 
@@ -118,35 +122,39 @@ public class TestCreateHadoopSequenceFile {
     }
 
     @Test
-    public void testMergedTarData() throws FileNotFoundException {
+    public void testMergedTarData() throws IOException {
         Map<String, String> attributes = new HashMap<>();
         attributes.put(CoreAttributes.MIME_TYPE.key(), "application/tar");
-        controller.enqueue(new FileInputStream("src/test/resources/testdata/13545312236534130.tar"), attributes);
-        controller.run();
-        List<MockFlowFile> successSeqFiles = controller.getFlowFilesForRelationship(CreateHadoopSequenceFile.RELATIONSHIP_SUCCESS);
-        assertEquals(1, successSeqFiles.size());
-        final byte[] data = successSeqFiles.iterator().next().toByteArray();
-        // Data should be greater than 1000000 because that's the size of 2 of our input files,
-        // and the file size should contain all of that plus headers, but the headers should only
-        // be a couple hundred bytes.
-        assertTrue(data.length > 1000000);
-        assertTrue(data.length < 1501000);
+        try (final FileInputStream fin = new FileInputStream("src/test/resources/testdata/13545312236534130.tar")) {
+            controller.enqueue(fin, attributes);
+            controller.run();
+            List<MockFlowFile> successSeqFiles = controller.getFlowFilesForRelationship(CreateHadoopSequenceFile.RELATIONSHIP_SUCCESS);
+            assertEquals(1, successSeqFiles.size());
+            final byte[] data = successSeqFiles.iterator().next().toByteArray();
+            // Data should be greater than 1000000 because that's the size of 2 of our input files,
+            // and the file size should contain all of that plus headers, but the headers should only
+            // be a couple hundred bytes.
+            assertTrue(data.length > 1000000);
+            assertTrue(data.length < 1501000);
+        }
     }
 
     @Test
     public void testMergedZipData() throws IOException {
         Map<String, String> attributes = new HashMap<>();
         attributes.put(CoreAttributes.MIME_TYPE.key(), "application/zip");
-        controller.enqueue(new FileInputStream("src/test/resources/testdata/13545423550275052.zip"), attributes);
-        controller.run();
-        List<MockFlowFile> successSeqFiles = controller.getFlowFilesForRelationship(CreateHadoopSequenceFile.RELATIONSHIP_SUCCESS);
-        assertEquals(1, successSeqFiles.size());
-        final byte[] data = successSeqFiles.iterator().next().toByteArray();
-        // Data should be greater than 1000000 because that's the size of 2 of our input files,
-        // and the file size should contain all of that plus headers, but the headers should only
-        // be a couple hundred bytes.
-        assertTrue(data.length > 1000000);
-        assertTrue(data.length < 1501000);
+        try (FileInputStream fin = new FileInputStream("src/test/resources/testdata/13545423550275052.zip")){
+            controller.enqueue(fin, attributes);
+            controller.run();
+            List<MockFlowFile> successSeqFiles = controller.getFlowFilesForRelationship(CreateHadoopSequenceFile.RELATIONSHIP_SUCCESS);
+            assertEquals(1, successSeqFiles.size());
+            final byte[] data = successSeqFiles.iterator().next().toByteArray();
+            // Data should be greater than 1000000 because that's the size of 2 of our input files,
+            // and the file size should contain all of that plus headers, but the headers should only
+            // be a couple hundred bytes.
+            assertTrue(data.length > 1000000);
+            assertTrue(data.length < 1501000);
+        }
 //        FileOutputStream fos = new FileOutputStream("zip-3-randoms.sf");
 //        fos.write(data);
 //        fos.flush();
@@ -157,16 +165,19 @@ public class TestCreateHadoopSequenceFile {
     public void testMergedFlowfilePackagedData() throws IOException {
         Map<String, String> attributes = new HashMap<>();
         attributes.put(CoreAttributes.MIME_TYPE.key(), "application/flowfile-v3");
-        controller.enqueue(new FileInputStream("src/test/resources/testdata/13545479542069498.pkg"), attributes);
-        controller.run();
-        List<MockFlowFile> successSeqFiles = controller.getFlowFilesForRelationship(CreateHadoopSequenceFile.RELATIONSHIP_SUCCESS);
-        assertEquals(1, successSeqFiles.size());
-        final byte[] data = successSeqFiles.iterator().next().toByteArray();
-        // Data should be greater than 1000000 because that's the size of 2 of our input files,
-        // and the file size should contain all of that plus headers, but the headers should only
-        // be a couple hundred bytes.
-        assertTrue(data.length > 1000000);
-        assertTrue(data.length < 1501000);
+        try ( final FileInputStream fin = new FileInputStream("src/test/resources/testdata/13545479542069498.pkg")) {
+            controller.enqueue(fin, attributes);
+
+            controller.run();
+            List<MockFlowFile> successSeqFiles = controller.getFlowFilesForRelationship(CreateHadoopSequenceFile.RELATIONSHIP_SUCCESS);
+            assertEquals(1, successSeqFiles.size());
+            final byte[] data = successSeqFiles.iterator().next().toByteArray();
+            // Data should be greater than 1000000 because that's the size of 2 of our input files,
+            // and the file size should contain all of that plus headers, but the headers should only
+            // be a couple hundred bytes.
+            assertTrue(data.length > 1000000);
+            assertTrue(data.length < 1501000);
+        }
 //        FileOutputStream fos = new FileOutputStream("flowfilePkg-3-randoms.sf");
 //        fos.write(data);
 //        fos.flush();

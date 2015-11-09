@@ -401,16 +401,17 @@ public class VolatileContentRepository implements ContentRepository {
 
     @Override
     public long exportTo(ContentClaim claim, OutputStream destination) throws IOException {
-        final InputStream in = read(claim);
-        return StreamUtils.copy(in, destination);
+        try (final InputStream in = read(claim) ){
+            return StreamUtils.copy(in, destination);
+        }
     }
 
     @Override
     public long exportTo(ContentClaim claim, OutputStream destination, long offset, long length) throws IOException {
         final InputStream in = read(claim);
         try {
-        StreamUtils.skip(in, offset);
-        StreamUtils.copy(in, destination, length);
+            StreamUtils.skip(in, offset);
+            StreamUtils.copy(in, destination, length);
         } finally {
             FileUtils.closeQuietly(in);
         }

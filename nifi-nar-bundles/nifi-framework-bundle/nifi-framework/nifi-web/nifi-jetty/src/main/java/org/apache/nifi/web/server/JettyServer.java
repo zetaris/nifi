@@ -375,24 +375,25 @@ public class JettyServer implements NiFiServer {
         }
 
         // get an input stream for the nifi-processor configuration file
-        BufferedReader in = new BufferedReader(new InputStreamReader(jarFile.getInputStream(jarEntry)));
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(jarFile.getInputStream(jarEntry)))) {
 
-        // read in each configured type
-        String rawComponentType;
-        while ((rawComponentType = in.readLine()) != null) {
-            // extract the component type
-            final String componentType = extractComponentType(rawComponentType);
-            if (componentType != null) {
-                List<String> extensions = uiExtensions.get(uiExtensionType);
+            // read in each configured type
+            String rawComponentType;
+            while ((rawComponentType = in.readLine()) != null) {
+                // extract the component type
+                final String componentType = extractComponentType(rawComponentType);
+                if (componentType != null) {
+                    List<String> extensions = uiExtensions.get(uiExtensionType);
 
-                // if there are currently no extensions for this type create it
-                if (extensions == null) {
-                    extensions = new ArrayList<>();
-                    uiExtensions.put(uiExtensionType, extensions);
+                    // if there are currently no extensions for this type create it
+                    if (extensions == null) {
+                        extensions = new ArrayList<>();
+                        uiExtensions.put(uiExtensionType, extensions);
+                    }
+
+                    // add the specified type
+                    extensions.add(componentType);
                 }
-
-                // add the specified type
-                extensions.add(componentType);
             }
         }
     }
@@ -440,40 +441,30 @@ public class JettyServer implements NiFiServer {
      */
     private List<String> getWarExtensions(final File war, final String path) {
         List<String> processorTypes = new ArrayList<>();
-        JarFile jarFile = null;
-        BufferedReader in = null;
-        try {
-            // load the jar file and attempt to find the nifi-processor entry
-            jarFile = new JarFile(war);
+
+        // load the jar file and attempt to find the nifi-processor entry
+        try (JarFile jarFile = new JarFile(war)) {
             JarEntry jarEntry = jarFile.getJarEntry(path);
 
             // ensure the nifi-processor entry was found
             if (jarEntry != null) {
                 // get an input stream for the nifi-processor configuration file
-                in = new BufferedReader(new InputStreamReader(jarFile.getInputStream(jarEntry)));
+                try (final BufferedReader in = new BufferedReader(new InputStreamReader(jarFile.getInputStream(jarEntry))) ){
 
-                // read in each configured type
-                String rawProcessorType;
-                while ((rawProcessorType = in.readLine()) != null) {
-                    // extract the processor type
-                    final String processorType = extractComponentType(rawProcessorType);
-                    if (processorType != null) {
-                        processorTypes.add(processorType);
+                    // read in each configured type
+                    String rawProcessorType;
+                    while ((rawProcessorType = in.readLine()) != null) {
+                        // extract the processor type
+                        final String processorType = extractComponentType(rawProcessorType);
+                        if (processorType != null) {
+                            processorTypes.add(processorType);
+                        }
                     }
                 }
             }
         } catch (IOException ioe) {
-            logger.warn(String.format("Unable to inspect %s for a custom processor UI.", war));
-        } finally {
-            // close the jar file - which closes all input streams obtained via getInputStream above
-            if (jarFile != null) {
-                FileUtils.closeQuietly(jarFile);
-            }
-            // close the BufferedReader, this may not be strictly necessary
-            if (in != null){
-                FileUtils.closeQuietly(in);
-            }
-        }
+            logger.warn("Unable to inspect {} for a custom processor UI.", new Object[]{war, ioe});
+        } 
 
         return processorTypes;
     }

@@ -93,8 +93,13 @@ public abstract class ListFileTransfer extends AbstractListProcessor<FileInfo> {
     @Override
     protected List<FileInfo> performListing(final ProcessContext context, final Long minTimestamp) throws IOException {
         final FileTransfer transfer = getFileTransfer(context);
-        final List<FileInfo> listing = transfer.getListing();
-        FileUtils.closeQuietly(transfer);
+        final List<FileInfo> listing;
+        try {
+            listing = transfer.getListing();
+        } finally {
+            FileUtils.closeQuietly(transfer);
+        }
+
         if (minTimestamp == null) {
             return listing;
         }
