@@ -31,6 +31,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.CompleteMultipartUploadRequest;
@@ -40,6 +43,7 @@ import com.amazonaws.services.s3.model.InitiateMultipartUploadResult;
 import com.amazonaws.services.s3.model.PartETag;
 import com.amazonaws.services.s3.model.UploadPartRequest;
 import com.amazonaws.services.s3.model.UploadPartResult;
+
 import org.apache.nifi.annotation.behavior.DynamicProperty;
 import org.apache.nifi.annotation.behavior.InputRequirement;
 import org.apache.nifi.annotation.behavior.InputRequirement.Requirement;
@@ -162,6 +166,10 @@ public class PutS3Object extends AbstractS3Processor {
     final static String S3_STORAGECLASS_META_KEY = "x-amz-storage-class";
     final static String S3_USERMETA_ATTR_KEY = "s3.usermetadata";
 
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private final Lock readLock = lock.readLock();
+    private final Lock writeLock = lock.writeLock();
+
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
         return properties;
@@ -193,54 +201,65 @@ public class PutS3Object extends AbstractS3Processor {
     }
 
     protected MultipartState getState(final String s3ObjectKey) throws IOException {
-        // get local state if it exists
-        MultipartState currState = null;
-        final File persistenceFile = getPersistenceFile();
-        if (persistenceFile.exists()) {
-            try (final FileInputStream fis = new FileInputStream(persistenceFile)) {
-                final Properties props = new Properties();
-                props.load(fis);
-                if (props.containsKey(s3ObjectKey)) {
-                    final String localSerialState = props.getProperty(s3ObjectKey);
-                    if (localSerialState != null) {
-                        currState = new MultipartState(localSerialState);
-                        getLogger().info("Local state for {} loaded with uploadId {} and {} partETags",
-                                new Object[]{s3ObjectKey, currState.getUploadId(), currState.getPartETags().size()});
+        readLock.lock();
+        try {
+            // get local state if it exists
+            MultipartState currState = null;
+            final File persistenceFile = getPersistenceFile();
+            if (persistenceFile.exists()) {
+                try (final FileInputStream fis = new FileInputStream(persistenceFile)) {
+                    final Properties props = new Properties();
+                    props.load(fis);
+                    if (props.containsKey(s3ObjectKey)) {
+                        final String localSerialState = props.getProperty(s3ObjectKey);
+                        if (localSerialState != null) {
+                            currState = new MultipartState(localSerialState);
+                            getLogger().info("Local state for {} loaded with uploadId {} and {} partETags",
+                                    new Object[]{s3ObjectKey, currState.getUploadId(), currState.getPartETags().size()});
+                        }
                     }
+                } catch (IOException ioe) {
+                    getLogger().warn("Failed to recover local state for {} due to {}. Assuming no local state and " +
+                            "restarting upload.", new Object[]{s3ObjectKey, ioe.getMessage()});
                 }
-            } catch (IOException ioe) {
-                getLogger().warn("Failed to recover local state for {} due to {}. Assuming no local state and " +
-                        "restarting upload.", new Object[]{s3ObjectKey, ioe.getMessage()});
             }
+            return currState;
+        } finally {
+            readLock.unlock();
         }
-        return currState;
     }
 
     protected void persistState(final String s3ObjectKey, final MultipartState currState) throws IOException {
-        final String currStateStr = (currState == null) ? null : currState.toString();
-        final File persistenceFile = getPersistenceFile();
-        final File parentDir = persistenceFile.getParentFile();
-        if (!parentDir.exists() && !parentDir.mkdirs()) {
-            throw new IOException("Persistence directory (" + parentDir.getAbsolutePath() + ") does not exist and " +
-                    "could not be created.");
-        }
-        final Properties props = new Properties();
-        if (persistenceFile.exists()) {
-            try (final FileInputStream fis = new FileInputStream(persistenceFile)) {
-                props.load(fis);
-            }
-        }
-        if (currStateStr != null) {
-            props.setProperty(s3ObjectKey, currStateStr);
-        } else {
-            props.remove(s3ObjectKey);
-        }
+        writeLock.lock();
+        try{
 
-        try (final FileOutputStream fos = new FileOutputStream(persistenceFile)) {
-            props.store(fos, null);
-        } catch (IOException ioe) {
-            getLogger().error("Could not store state {} due to {}.",
-                    new Object[]{persistenceFile.getAbsolutePath(), ioe.getMessage()});
+            final String currStateStr = (currState == null) ? null : currState.toString();
+            final File persistenceFile = getPersistenceFile();
+            final File parentDir = persistenceFile.getParentFile();
+            if (!parentDir.exists() && !parentDir.mkdirs()) {
+                throw new IOException("Persistence directory (" + parentDir.getAbsolutePath() + ") does not exist and " +
+                        "could not be created.");
+            }
+            final Properties props = new Properties();
+            if (persistenceFile.exists()) {
+                try (final FileInputStream fis = new FileInputStream(persistenceFile)) {
+                    props.load(fis);
+                }
+            }
+            if (currStateStr != null) {
+                props.setProperty(s3ObjectKey, currStateStr);
+            } else {
+                props.remove(s3ObjectKey);
+            }
+
+            try (final FileOutputStream fos = new FileOutputStream(persistenceFile)) {
+                props.store(fos, null);
+            } catch (IOException ioe) {
+                getLogger().error("Could not store state {} due to {}.",
+                        new Object[]{persistenceFile.getAbsolutePath(), ioe.getMessage()});
+            }
+        } finally {
+            writeLock.unlock();
         }
     }
 
@@ -249,19 +268,24 @@ public class PutS3Object extends AbstractS3Processor {
     }
 
     protected void destroyState() {
-        final File persistenceFile = getPersistenceFile();
-        if (persistenceFile.exists()) {
-            if (!persistenceFile.delete()) {
-                getLogger().warn("Could not delete state file {}, attempting to delete contents.",
-                        new Object[]{persistenceFile.getAbsolutePath()});
-            } else {
-                try (final FileOutputStream fos = new FileOutputStream(persistenceFile)) {
-                    new Properties().store(fos, null);
-                } catch (IOException ioe) {
-                    getLogger().error("Could not store empty state file {} due to {}.",
-                            new Object[]{persistenceFile.getAbsolutePath(), ioe.getMessage()});
+        writeLock.lock();
+        try {
+            final File persistenceFile = getPersistenceFile();
+            if (persistenceFile.exists()) {
+                if (!persistenceFile.delete()) {
+                    getLogger().warn("Could not delete state file {}, attempting to delete contents.",
+                            new Object[]{persistenceFile.getAbsolutePath()});
+                } else {
+                    try (final FileOutputStream fos = new FileOutputStream(persistenceFile)) {
+                        new Properties().store(fos, null);
+                    } catch (IOException ioe) {
+                        getLogger().error("Could not store empty state file {} due to {}.",
+                                new Object[]{persistenceFile.getAbsolutePath(), ioe.getMessage()});
+                    }
                 }
-            }
+            } 
+        } finally {
+            writeLock.unlock();
         }
     }
 
@@ -357,7 +381,7 @@ public class PutS3Object extends AbstractS3Processor {
                             }
                         } else {
                             //----------------------------------------
-                            // multippart upload
+                            // multipart upload
                             //----------------------------------------
 
                             // load or create persistent state
@@ -366,6 +390,7 @@ public class PutS3Object extends AbstractS3Processor {
                             try {
                                 currentState = getState(cacheKey);
                                 if (currentState != null) {
+                                    // Log the current state
                                     if (currentState.getPartETags().size() > 0) {
                                         final PartETag lastETag = currentState.getPartETags().get(
                                                 currentState.getPartETags().size() - 1);
@@ -389,6 +414,7 @@ public class PutS3Object extends AbstractS3Processor {
                                                         currentState.getContentLength()});
                                     }
                                 } else {
+                                    // create a new state object
                                     currentState = new MultipartState();
                                     currentState.setPartSize(multipartPartSize);
                                     currentState.setStorageClass(
@@ -563,6 +589,8 @@ public class PutS3Object extends AbstractS3Processor {
     }
 
     protected static class MultipartState implements Serializable {
+
+        private static final long serialVersionUID = 7959345311775848703L;
 
         private static final String SEPARATOR = "#";
 
