@@ -23,29 +23,34 @@ import javax.xml.bind.annotation.XmlType;
  * DTO for serializing the status of a connection.
  */
 @XmlType(name = "connectionStatus")
-public class ConnectionStatusDTO {
+public class ConnectionStatusDTO implements Cloneable {
 
     private String id;
     private String groupId;
     private String name;
-    private String input;
-    private String queuedCount;
-    private String queuedSize;
-    private String queued;
-    private String output;
 
     private String sourceId;
     private String sourceName;
     private String destinationId;
     private String destinationName;
 
+    private Integer flowFilesIn = 0;
+    private Long bytesIn = 0L;
+    private String input;
+    private Integer flowFilesOut = 0;
+    private Long bytesOut = 0L;
+    private String output;
+    private Integer flowFilesQueued = 0;
+    private Long bytesQueued = 0L;
+    private String queued;
+    private String queuedSize;
+    private String queuedCount;
+
     /* getters / setters */
     /**
      * @return The connection id
      */
-    @ApiModelProperty(
-            value = "The id of the connection."
-    )
+    @ApiModelProperty("The id of the connection.")
     public String getId() {
         return id;
     }
@@ -57,9 +62,7 @@ public class ConnectionStatusDTO {
     /**
      * @return the ID of the Process Group to which this connection belongs.
      */
-    @ApiModelProperty(
-            value = "The id of the process group the connection belongs to."
-    )
+    @ApiModelProperty("The id of the process group the connection belongs to.")
     public String getGroupId() {
         return groupId;
     }
@@ -71,9 +74,7 @@ public class ConnectionStatusDTO {
     /**
      * @return name of this connection
      */
-    @ApiModelProperty(
-            value = "The name of the connection."
-    )
+    @ApiModelProperty("The name of the connection.")
     public String getName() {
         return name;
     }
@@ -85,9 +86,7 @@ public class ConnectionStatusDTO {
     /**
      * @return total count of flow files that are queued
      */
-    @ApiModelProperty(
-            value = "The number of flowfiles that are queued."
-    )
+    @ApiModelProperty("The number of flowfiles that are queued, pretty printed.")
     public String getQueuedCount() {
         return queuedCount;
     }
@@ -96,14 +95,26 @@ public class ConnectionStatusDTO {
         this.queuedCount = queuedCount;
     }
 
+
     /**
      * @return total size of flow files that are queued
      */
-    @ApiModelProperty(
-            value = "The total size of flowfiles that are queued formatted."
-    )
+    @ApiModelProperty("The total size of flowfiles that are queued formatted.")
     public String getQueuedSize() {
         return queuedSize;
+    }
+
+
+    public void setInput(String input) {
+        this.input = input;
+    }
+
+    public void setOutput(String output) {
+        this.output = output;
+    }
+
+    public void setQueued(String queued) {
+        this.queued = queued;
     }
 
     public void setQueuedSize(String queuedSize) {
@@ -113,23 +124,16 @@ public class ConnectionStatusDTO {
     /**
      * @return The total count and size of queued flow files
      */
-    @ApiModelProperty(
-            value = "The total count and size of queued flowfiles formatted."
-    )
+    @ApiModelProperty("The total count and size of queued flowfiles formatted.")
     public String getQueued() {
         return queued;
     }
 
-    public void setQueued(String queued) {
-        this.queued = queued;
-    }
 
     /**
      * @return id of the source of this connection
      */
-    @ApiModelProperty(
-            value = "The id of the source of the connection."
-    )
+    @ApiModelProperty("The id of the source of the connection.")
     public String getSourceId() {
         return sourceId;
     }
@@ -141,9 +145,7 @@ public class ConnectionStatusDTO {
     /**
      * @return name of the source of this connection
      */
-    @ApiModelProperty(
-            value = "The name of the source of the connection."
-    )
+    @ApiModelProperty("The name of the source of the connection.")
     public String getSourceName() {
         return sourceName;
     }
@@ -155,9 +157,7 @@ public class ConnectionStatusDTO {
     /**
      * @return id of the destination of this connection
      */
-    @ApiModelProperty(
-            value = "The id of the destination of the connection."
-    )
+    @ApiModelProperty("The id of the destination of the connection.")
     public String getDestinationId() {
         return destinationId;
     }
@@ -169,9 +169,7 @@ public class ConnectionStatusDTO {
     /**
      * @return name of the destination of this connection
      */
-    @ApiModelProperty(
-            value = "The name of the destination of the connection."
-    )
+    @ApiModelProperty("The name of the destination of the connection.")
     public String getDestinationName() {
         return destinationName;
     }
@@ -183,29 +181,99 @@ public class ConnectionStatusDTO {
     /**
      * @return input for this connection
      */
-    @ApiModelProperty(
-            value = "The input count/size for the connection in the last 5 minutes."
-    )
+    @ApiModelProperty("The input count/size for the connection in the last 5 minutes, pretty printed.")
     public String getInput() {
         return input;
     }
 
-    public void setInput(String input) {
-        this.input = input;
-    }
 
     /**
      * @return output for this connection
      */
-    @ApiModelProperty(
-            value = "The output count/sie for the connection in the last 5 minutes."
-    )
+    @ApiModelProperty("The output count/sie for the connection in the last 5 minutes, pretty printed.")
     public String getOutput() {
         return output;
     }
 
-    public void setOutput(String output) {
-        this.output = output;
+
+    @ApiModelProperty("The number of FlowFiles that have come into the connection in the last 5 minutes.")
+    public Integer getFlowFilesIn() {
+        return flowFilesIn;
     }
 
+    public void setFlowFilesIn(Integer flowFilesIn) {
+        this.flowFilesIn = flowFilesIn;
+    }
+
+    @ApiModelProperty("The size of the FlowFiles that have come into the connection in the last 5 minutes.")
+    public Long getBytesIn() {
+        return bytesIn;
+    }
+
+    public void setBytesIn(Long bytesIn) {
+        this.bytesIn = bytesIn;
+    }
+
+    @ApiModelProperty("The number of FlowFiles that have left the connection in the last 5 minutes.")
+    public Integer getFlowFilesOut() {
+        return flowFilesOut;
+    }
+
+    public void setFlowFilesOut(Integer flowFilesOut) {
+        this.flowFilesOut = flowFilesOut;
+    }
+
+    @ApiModelProperty("The number of bytes that have left the connection in the last 5 minutes.")
+    public Long getBytesOut() {
+        return bytesOut;
+    }
+
+    public void setBytesOut(Long bytesOut) {
+        this.bytesOut = bytesOut;
+    }
+
+    @ApiModelProperty("The number of FlowFiles that are currently queued in the connection.")
+    public Integer getFlowFilesQueued() {
+        return flowFilesQueued;
+    }
+
+    public void setFlowFilesQueued(Integer flowFilesQueued) {
+        this.flowFilesQueued = flowFilesQueued;
+    }
+
+    @ApiModelProperty("The size of the FlowFiles that are currently queued in the connection.")
+    public Long getBytesQueued() {
+        return bytesQueued;
+    }
+
+    public void setBytesQueued(Long bytesQueued) {
+        this.bytesQueued = bytesQueued;
+    }
+
+
+    @Override
+    public ConnectionStatusDTO clone() {
+        final ConnectionStatusDTO other = new ConnectionStatusDTO();
+        other.setDestinationId(getDestinationId());
+        other.setDestinationName(getDestinationName());
+        other.setGroupId(getGroupId());
+        other.setId(getId());
+        other.setName(getName());
+        other.setSourceId(getSourceId());
+        other.setSourceName(getSourceName());
+
+        other.setFlowFilesIn(getFlowFilesIn());
+        other.setBytesIn(getBytesIn());
+        other.setInput(getInput());
+        other.setFlowFilesOut(getFlowFilesOut());
+        other.setBytesOut(getBytesOut());
+        other.setOutput(getOutput());
+        other.setFlowFilesQueued(getFlowFilesQueued());
+        other.setBytesQueued(getBytesQueued());
+        other.setQueued(getQueued());
+        other.setQueuedCount(getQueuedCount());
+        other.setQueuedSize(getQueuedSize());
+
+        return other;
+    }
 }

@@ -127,6 +127,7 @@ import org.apache.nifi.web.api.dto.status.ProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.ProcessorStatusDTO;
 import org.apache.nifi.web.api.dto.status.RemoteProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.StatusDTO;
+import org.apache.nifi.web.api.dto.status.StatusMerger;
 
 import javax.ws.rs.WebApplicationException;
 import java.text.Collator;
@@ -322,7 +323,7 @@ public final class DtoFactory {
         final StateMapDTO dto = new StateMapDTO();
         dto.setScope(scope.toString());
 
-        final TreeMap<String, String> sortedState = new TreeMap(SortedStateUtils.getKeyComparator());
+        final TreeMap<String, String> sortedState = new TreeMap<>(SortedStateUtils.getKeyComparator());
         final Map<String, String> state = stateMap.toMap();
         sortedState.putAll(state);
 
@@ -708,13 +709,6 @@ public final class DtoFactory {
         return copy;
     }
 
-    private String formatCount(final Integer intStatus) {
-        return intStatus == null ? "-" : FormatUtils.formatCount(intStatus);
-    }
-
-    private String formatDataSize(final Long longStatus) {
-        return longStatus == null ? "-" : FormatUtils.formatDataSize(longStatus);
-    }
 
     public RemoteProcessGroupStatusDTO createRemoteProcessGroupStatusDto(final RemoteProcessGroupStatus remoteProcessGroupStatus) {
         final RemoteProcessGroupStatusDTO dto = new RemoteProcessGroupStatusDTO();
@@ -724,10 +718,13 @@ public final class DtoFactory {
         dto.setName(remoteProcessGroupStatus.getName());
         dto.setTransmissionStatus(remoteProcessGroupStatus.getTransmissionStatus().toString());
         dto.setActiveThreadCount(remoteProcessGroupStatus.getActiveThreadCount());
-        dto.setSent(formatCount(remoteProcessGroupStatus.getSentCount()) + " / " + formatDataSize(remoteProcessGroupStatus.getSentContentSize()));
-        dto.setReceived(formatCount(remoteProcessGroupStatus.getReceivedCount()) + " / " + formatDataSize(remoteProcessGroupStatus.getReceivedContentSize()));
+        dto.setFlowFilesSent(remoteProcessGroupStatus.getSentCount());
+        dto.setBytesSent(remoteProcessGroupStatus.getSentContentSize());
+        dto.setFlowFilesReceived(remoteProcessGroupStatus.getReceivedCount());
+        dto.setBytesReceived(remoteProcessGroupStatus.getReceivedContentSize());
         dto.setAuthorizationIssues(remoteProcessGroupStatus.getAuthorizationIssues());
 
+        StatusMerger.updatePrettyPrintedFields(dto);
         return dto;
     }
 
@@ -737,20 +734,20 @@ public final class DtoFactory {
         processGroupStatusDto.setId(processGroupStatus.getId());
         processGroupStatusDto.setName(processGroupStatus.getName());
         processGroupStatusDto.setStatsLastRefreshed(new Date(processGroupStatus.getCreationTimestamp()));
-        processGroupStatusDto.setRead(formatDataSize(processGroupStatus.getBytesRead()));
-        processGroupStatusDto.setWritten(formatDataSize(processGroupStatus.getBytesWritten()));
-        processGroupStatusDto.setInput(formatCount(processGroupStatus.getInputCount()) + " / " + formatDataSize(processGroupStatus.getInputContentSize()));
-        processGroupStatusDto.setOutput(formatCount(processGroupStatus.getOutputCount()) + " / " + formatDataSize(processGroupStatus.getOutputContentSize()));
-        processGroupStatusDto.setTransferred(formatCount(processGroupStatus.getFlowFilesTransferred()) + " / " + formatDataSize(processGroupStatus.getBytesTransferred()));
-        processGroupStatusDto.setSent(formatCount(processGroupStatus.getFlowFilesSent()) + " / " + formatDataSize(processGroupStatus.getBytesSent()));
-        processGroupStatusDto.setReceived(formatCount(processGroupStatus.getFlowFilesReceived()) + " / " + formatDataSize(processGroupStatus.getBytesReceived()));
+        processGroupStatusDto.setBytesRead(processGroupStatus.getBytesRead());
+        processGroupStatusDto.setBytesWritten(processGroupStatus.getBytesWritten());
+        processGroupStatusDto.setFlowFilesIn(processGroupStatus.getInputCount());
+        processGroupStatusDto.setBytesIn(processGroupStatus.getInputContentSize());
+        processGroupStatusDto.setFlowFilesOut(processGroupStatus.getOutputCount());
+        processGroupStatusDto.setBytesOut(processGroupStatus.getOutputContentSize());
+        processGroupStatusDto.setFlowFilesTransferred(processGroupStatus.getFlowFilesTransferred());
+        processGroupStatusDto.setBytesTransferred(processGroupStatus.getBytesTransferred());
+        processGroupStatusDto.setFlowFilesSent(processGroupStatus.getFlowFilesSent());
+        processGroupStatusDto.setBytesSent(processGroupStatus.getBytesSent());
+        processGroupStatusDto.setFlowFilesReceived(processGroupStatus.getFlowFilesReceived());
+        processGroupStatusDto.setBytesReceived(processGroupStatus.getBytesReceived());
         processGroupStatusDto.setActiveThreadCount(processGroupStatus.getActiveThreadCount());
-
-        final String queuedCount = FormatUtils.formatCount(processGroupStatus.getQueuedCount());
-        final String queuedSize = FormatUtils.formatDataSize(processGroupStatus.getQueuedContentSize());
-        processGroupStatusDto.setQueuedCount(queuedCount);
-        processGroupStatusDto.setQueuedSize(queuedSize);
-        processGroupStatusDto.setQueued(queuedCount + " / " + queuedSize);
+        StatusMerger.updatePrettyPrintedFields(processGroupStatusDto);
 
         final Map<String, StatusDTO> componentStatusDtoMap = new HashMap<>();
 
@@ -896,7 +893,6 @@ public final class DtoFactory {
     }
 
     public ConnectionStatusDTO createConnectionStatusDto(final ConnectionStatus connectionStatus) {
-
         final ConnectionStatusDTO connectionStatusDto = new ConnectionStatusDTO();
         connectionStatusDto.setGroupId(connectionStatus.getGroupId());
         connectionStatusDto.setId(connectionStatus.getId());
@@ -906,46 +902,36 @@ public final class DtoFactory {
         connectionStatusDto.setDestinationId(connectionStatus.getDestinationId());
         connectionStatusDto.setDestinationName(connectionStatus.getDestinationName());
 
-        final String queuedCount = FormatUtils.formatCount(connectionStatus.getQueuedCount());
-        final String queuedSize = FormatUtils.formatDataSize(connectionStatus.getQueuedBytes());
-        connectionStatusDto.setQueuedCount(queuedCount);
-        connectionStatusDto.setQueuedSize(queuedSize);
-        connectionStatusDto.setQueued(queuedCount + " / " + queuedSize);
+        connectionStatusDto.setFlowFilesQueued(connectionStatus.getQueuedCount());
+        connectionStatusDto.setBytesQueued(connectionStatus.getQueuedBytes());
 
-        final int inputCount = connectionStatus.getInputCount();
-        final long inputBytes = connectionStatus.getInputBytes();
-        connectionStatusDto.setInput(FormatUtils.formatCount(inputCount) + " / " + FormatUtils.formatDataSize(inputBytes));
+        connectionStatusDto.setFlowFilesIn(connectionStatus.getInputCount());
+        connectionStatusDto.setBytesIn(connectionStatus.getInputBytes());
 
-        final int outputCount = connectionStatus.getOutputCount();
-        final long outputBytes = connectionStatus.getOutputBytes();
-        connectionStatusDto.setOutput(FormatUtils.formatCount(outputCount) + " / " + FormatUtils.formatDataSize(outputBytes));
+        connectionStatusDto.setFlowFilesOut(connectionStatus.getOutputCount());
+        connectionStatusDto.setBytesOut(connectionStatus.getOutputBytes());
+        StatusMerger.updatePrettyPrintedFields(connectionStatusDto);
 
         return connectionStatusDto;
     }
 
     public ProcessorStatusDTO createProcessorStatusDto(final ProcessorStatus procStatus) {
-
         final ProcessorStatusDTO dto = new ProcessorStatusDTO();
         dto.setId(procStatus.getId());
         dto.setGroupId(procStatus.getGroupId());
         dto.setName(procStatus.getName());
 
-        final int processedCount = procStatus.getOutputCount();
-        final long numProcessedBytes = procStatus.getOutputBytes();
-        dto.setOutput(FormatUtils.formatCount(processedCount) + " / " + FormatUtils.formatDataSize(numProcessedBytes));
+        dto.setFlowFilesOut(procStatus.getOutputCount());
+        dto.setBytesOut(procStatus.getOutputBytes());
 
-        final int inputCount = procStatus.getInputCount();
-        final long inputBytes = procStatus.getInputBytes();
-        dto.setInput(FormatUtils.formatCount(inputCount) + " / " + FormatUtils.formatDataSize(inputBytes));
+        dto.setFlowFilesIn(procStatus.getInputCount());
+        dto.setBytesIn(procStatus.getInputBytes());
 
-        final long readBytes = procStatus.getBytesRead();
-        dto.setRead(FormatUtils.formatDataSize(readBytes));
+        dto.setBytesRead(procStatus.getBytesRead());
+        dto.setBytesWritten(procStatus.getBytesWritten());
 
-        final long writtenBytes = procStatus.getBytesWritten();
-        dto.setWritten(FormatUtils.formatDataSize(writtenBytes));
-
-        dto.setTasksDuration(FormatUtils.formatHoursMinutesSeconds(procStatus.getProcessingNanos(), TimeUnit.NANOSECONDS));
-        dto.setTasks(FormatUtils.formatCount(procStatus.getInvocations()));
+        dto.setTaskCount(procStatus.getInvocations());
+        dto.setTaskDuration(procStatus.getProcessingNanos());
 
         // determine the run status
         dto.setRunStatus(procStatus.getRunStatus().toString());
@@ -953,6 +939,7 @@ public final class DtoFactory {
         dto.setActiveThreadCount(procStatus.getActiveThreadCount());
         dto.setType(procStatus.getType());
 
+        StatusMerger.updatePrettyPrintedFields(dto);
         return dto;
     }
 
@@ -971,13 +958,12 @@ public final class DtoFactory {
         dto.setRunStatus(portStatus.getRunStatus().toString());
         dto.setTransmitting(portStatus.isTransmitting());
 
-        final int processedCount = portStatus.getOutputCount();
-        final long numProcessedBytes = portStatus.getOutputBytes();
-        dto.setOutput(FormatUtils.formatCount(processedCount) + " / " + FormatUtils.formatDataSize(numProcessedBytes));
+        dto.setFlowFilesOut(portStatus.getOutputCount());
+        dto.setBytesOut(portStatus.getOutputBytes());
 
-        final int inputCount = portStatus.getInputCount();
-        final long inputBytes = portStatus.getInputBytes();
-        dto.setInput(FormatUtils.formatCount(inputCount) + " / " + FormatUtils.formatDataSize(inputBytes));
+        dto.setFlowFilesIn(portStatus.getInputCount());
+        dto.setBytesIn(portStatus.getInputBytes());
+        StatusMerger.updatePrettyPrintedFields(dto);
 
         return dto;
     }
@@ -1765,6 +1751,7 @@ public final class DtoFactory {
      * @param node node
      * @return dto
      */
+    @SuppressWarnings("deprecation")
     public ProvenanceNodeDTO createProvenanceEventNodeDTO(final ProvenanceEventLineageNode node) {
         final ProvenanceNodeDTO dto = new ProvenanceNodeDTO();
         dto.setId(node.getIdentifier());
@@ -1785,6 +1772,7 @@ public final class DtoFactory {
      * @param node node
      * @return dto
      */
+    @SuppressWarnings("deprecation")
     public ProvenanceNodeDTO createFlowFileNodeDTO(final LineageNode node) {
         final ProvenanceNodeDTO dto = new ProvenanceNodeDTO();
         dto.setId(node.getIdentifier());

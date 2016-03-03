@@ -16,34 +16,37 @@
  */
 package org.apache.nifi.web.api.dto.status;
 
-import com.wordnik.swagger.annotations.ApiModelProperty;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+
 import javax.xml.bind.annotation.XmlType;
 import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
+
 import org.apache.nifi.web.api.dto.util.TimeAdapter;
 
+import com.wordnik.swagger.annotations.ApiModelProperty;
+
 /**
- * History status for a component in this NiFi.
+ * DTO for serializing the status history of a single component across the cluster.
  */
 @XmlType(name = "statusHistory")
 public class StatusHistoryDTO {
 
     private Date generated;
 
-    private LinkedHashMap<String, String> details;
-
+    private LinkedHashMap<String, String> componentDetails;
     private List<StatusDescriptorDTO> fieldDescriptors;
-    private List<StatusSnapshotDTO> statusSnapshots;
+    private List<StatusSnapshotDTO> aggregateStatusSnapshots;
+    private Map<String, List<StatusSnapshotDTO>> nodeStatusSnapshots;
+
 
     /**
      * @return when this status history was generated
      */
     @XmlJavaTypeAdapter(TimeAdapter.class)
-    @ApiModelProperty(
-            value = "The timestamp when the status history was generated."
-    )
+    @ApiModelProperty("When the status history was generated.")
     public Date getGenerated() {
         return generated;
     }
@@ -53,25 +56,18 @@ public class StatusHistoryDTO {
     }
 
     /**
-     * @return The component details for this status history
+     * @return key/value pairs that describe the component that the status history belongs to
      */
-    @ApiModelProperty(
-            value = "The component details for the status history."
-    )
-    public LinkedHashMap<String, String> getDetails() {
-        return details;
+    @ApiModelProperty("A Map of key/value pairs that describe the component that the status history belongs to")
+    public LinkedHashMap<String, String> getComponentDetails() {
+        return componentDetails;
     }
 
-    public void setDetails(LinkedHashMap<String, String> details) {
-        this.details = details;
+    public void setComponentDetails(LinkedHashMap<String, String> componentDetails) {
+        this.componentDetails = componentDetails;
     }
 
-    /**
-     * @return Descriptors for each supported status field
-     */
-    @ApiModelProperty(
-            value = "The descriptor for each support status field."
-    )
+    @ApiModelProperty("The Descriptors that provide information on each of the metrics provided in the status history")
     public List<StatusDescriptorDTO> getFieldDescriptors() {
         return fieldDescriptors;
     }
@@ -80,18 +76,24 @@ public class StatusHistoryDTO {
         this.fieldDescriptors = fieldDescriptors;
     }
 
-    /**
-     * @return The status snapshots
-     */
-    @ApiModelProperty(
-            value = "The status snapshots."
-    )
-    public List<StatusSnapshotDTO> getStatusSnapshots() {
-        return statusSnapshots;
+    @ApiModelProperty("A list of StatusSnapshotDTO objects that provide the actual metric values for the component. If the NiFi instance "
+        + "is clustered, this will represent the aggregate status across all nodes. If the NiFi instance is not clustered, this will represent "
+        + "the status of the entire NiFi instance.")
+    public List<StatusSnapshotDTO> getAggregateStatusSnapshots() {
+        return aggregateStatusSnapshots;
     }
 
-    public void setStatusSnapshots(List<StatusSnapshotDTO> statusSnapshots) {
-        this.statusSnapshots = statusSnapshots;
+    public void setAggregateStatusSnapshots(List<StatusSnapshotDTO> aggregateStatusSnapshots) {
+        this.aggregateStatusSnapshots = aggregateStatusSnapshots;
     }
 
+    @ApiModelProperty("A Map of Node Address to a list of StatusSnapshotDTO objects that provide the actual metric values for the component, for that node. "
+        + "If the NiFi instance is not clustered, this value will be null.")
+    public Map<String, List<StatusSnapshotDTO>> getNodeStatusSnapshots() {
+        return nodeStatusSnapshots;
+    }
+
+    public void setNodeStatusSnapshots(Map<String, List<StatusSnapshotDTO>> nodeStatusSnapshots) {
+        this.nodeStatusSnapshots = nodeStatusSnapshots;
+    }
 }

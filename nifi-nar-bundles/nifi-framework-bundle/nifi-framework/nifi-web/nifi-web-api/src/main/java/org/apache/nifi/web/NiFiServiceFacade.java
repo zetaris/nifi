@@ -67,7 +67,6 @@ import org.apache.nifi.web.api.dto.status.ClusterProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.ClusterProcessorStatusDTO;
 import org.apache.nifi.web.api.dto.status.ClusterRemoteProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.ClusterStatusDTO;
-import org.apache.nifi.web.api.dto.status.ClusterStatusHistoryDTO;
 import org.apache.nifi.web.api.dto.status.ControllerStatusDTO;
 import org.apache.nifi.web.api.dto.status.NodeStatusDTO;
 import org.apache.nifi.web.api.dto.status.ProcessGroupStatusDTO;
@@ -1538,11 +1537,6 @@ public interface NiFiServiceFacade {
      */
     ClusterProcessorStatusDTO getClusterProcessorStatus(String processorId);
 
-    /**
-     * @param processorId id
-     * @return the processor status history for each node connected to the cluster
-     */
-    ClusterStatusHistoryDTO getClusterProcessorStatusHistory(String processorId);
 
     /**
      * Returns a connection's status for each node connected to the cluster.
@@ -1552,17 +1546,6 @@ public interface NiFiServiceFacade {
      */
     ClusterConnectionStatusDTO getClusterConnectionStatus(String connectionId);
 
-    /**
-     * @param connectionId id
-     * @return the connection status history for each node connected to the cluster
-     */
-    ClusterStatusHistoryDTO getClusterConnectionStatusHistory(String connectionId);
-
-    /**
-     * @param processGroupId id
-     * @return the process group status history for each node connected to the cluster
-     */
-    ClusterStatusHistoryDTO getClusterProcessGroupStatusHistory(String processGroupId);
 
     /**
      * Returns a process group's status for each node connected to the cluster.
@@ -1572,13 +1555,6 @@ public interface NiFiServiceFacade {
      */
     ClusterProcessGroupStatusDTO getClusterProcessGroupStatus(String processorId);
 
-    /**
-     * Returns the remote process group status history for each node connected to the cluster.
-     *
-     * @param remoteProcessGroupId a remote process group identifier
-     * @return The cluster status history
-     */
-    ClusterStatusHistoryDTO getClusterRemoteProcessGroupStatusHistory(String remoteProcessGroupId);
 
     /**
      * Returns a remote process group's status for each node connected to the cluster.

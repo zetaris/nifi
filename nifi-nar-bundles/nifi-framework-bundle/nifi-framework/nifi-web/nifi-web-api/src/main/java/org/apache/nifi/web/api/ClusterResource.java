@@ -16,6 +16,8 @@
  */
 package org.apache.nifi.web.api;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,6 +27,7 @@ import javax.ws.rs.DefaultValue;
 import javax.ws.rs.FormParam;
 import javax.ws.rs.GET;
 import javax.ws.rs.HEAD;
+import javax.ws.rs.HttpMethod;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
@@ -34,6 +37,7 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.cluster.manager.impl.WebClusterManager;
 import org.apache.nifi.cluster.node.Node;
 import org.apache.nifi.util.NiFiProperties;
@@ -49,23 +53,22 @@ import org.apache.nifi.web.api.dto.RevisionDTO;
 import org.apache.nifi.web.api.dto.search.NodeSearchResultDTO;
 import org.apache.nifi.web.api.dto.status.ClusterConnectionStatusDTO;
 import org.apache.nifi.web.api.dto.status.ClusterPortStatusDTO;
+import org.apache.nifi.web.api.dto.status.ClusterProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.ClusterProcessorStatusDTO;
 import org.apache.nifi.web.api.dto.status.ClusterRemoteProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.ClusterStatusDTO;
-import org.apache.nifi.web.api.dto.status.ClusterStatusHistoryDTO;
 import org.apache.nifi.web.api.entity.ClusterConnectionStatusEntity;
 import org.apache.nifi.web.api.entity.ClusterEntity;
 import org.apache.nifi.web.api.entity.ClusterPortStatusEntity;
+import org.apache.nifi.web.api.entity.ClusterProcessGroupStatusEntity;
 import org.apache.nifi.web.api.entity.ClusterProcessorStatusEntity;
 import org.apache.nifi.web.api.entity.ClusterRemoteProcessGroupStatusEntity;
 import org.apache.nifi.web.api.entity.ClusterSearchResultsEntity;
 import org.apache.nifi.web.api.entity.ClusterStatusEntity;
-import org.apache.nifi.web.api.entity.ClusterStatusHistoryEntity;
 import org.apache.nifi.web.api.entity.ProcessorEntity;
+import org.apache.nifi.web.api.entity.StatusHistoryEntity;
 import org.apache.nifi.web.api.request.ClientIdParameter;
 import org.apache.nifi.web.api.request.LongParameter;
-
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import com.sun.jersey.api.core.ResourceContext;
@@ -75,8 +78,6 @@ import com.wordnik.swagger.annotations.ApiParam;
 import com.wordnik.swagger.annotations.ApiResponse;
 import com.wordnik.swagger.annotations.ApiResponses;
 import com.wordnik.swagger.annotations.Authorization;
-import org.apache.nifi.web.api.dto.status.ClusterProcessGroupStatusDTO;
-import org.apache.nifi.web.api.entity.ClusterProcessGroupStatusEntity;
 
 /**
  * RESTful endpoint for managing a cluster.
@@ -92,6 +93,7 @@ public class ClusterResource extends ApplicationResource {
     private ResourceContext resourceContext;
     private NiFiServiceFacade serviceFacade;
     private NiFiProperties properties;
+    private WebClusterManager clusterManager;
 
     /**
      * Locates the ClusterConnection sub-resource.
@@ -595,7 +597,7 @@ public class ClusterResource extends ApplicationResource {
     @PreAuthorize("hasAnyRole('ROLE_MONITOR', 'ROLE_DFM', 'ROLE_ADMIN')")
     @ApiOperation(
             value = "Gets processor status history across the cluster",
-            response = ClusterStatusHistoryEntity.class,
+ response = StatusHistoryEntity.class,
             authorizations = {
                 @Authorization(value = "Read Only", type = "ROLE_MONITOR"),
                 @Authorization(value = "DFM", type = "ROLE_DFM"),
@@ -624,19 +626,16 @@ public class ClusterResource extends ApplicationResource {
             @PathParam("id") String id) {
 
         if (properties.isClusterManager()) {
-            final ClusterStatusHistoryDTO dto = serviceFacade.getClusterProcessorStatusHistory(id);
+            final URI uri;
+            try {
+                final URI originalUri = getAbsolutePath();
+                final String newPath = "/nifi-api/processors/" + id + "/status/history";
+                uri = new URI(originalUri.getScheme(), originalUri.getAuthority(), newPath, originalUri.getQuery(), originalUri.getFragment());
+            } catch (final URISyntaxException use) {
+                throw new RuntimeException(use);
+            }
 
-            // create the revision
-            RevisionDTO revision = new RevisionDTO();
-            revision.setClientId(clientId.getClientId());
-
-            // create entity
-            final ClusterStatusHistoryEntity entity = new ClusterStatusHistoryEntity();
-            entity.setClusterStatusHistory(dto);
-            entity.setRevision(revision);
-
-            // generate the response
-            return generateOkResponse(entity).build();
+            return clusterManager.applyRequest(HttpMethod.GET, uri, getRequestParameters(true), getHeaders()).getResponse();
         }
 
         throw new IllegalClusterResourceRequestException("Only a cluster manager can process the request.");
@@ -695,67 +694,6 @@ public class ClusterResource extends ApplicationResource {
             // create entity
             final ClusterConnectionStatusEntity entity = new ClusterConnectionStatusEntity();
             entity.setClusterConnectionStatus(dto);
-            entity.setRevision(revision);
-
-            // generate the response
-            return generateOkResponse(entity).build();
-        }
-
-        throw new IllegalClusterResourceRequestException("Only a cluster manager can process the request.");
-    }
-
-    /**
-     * Gets the connections status history for every node.
-     *
-     * @param clientId Optional client id. If the client id is not specified, a new one will be generated. This value (whether specified or generated) is included in the response.
-     * @param id The id of the processor
-     * @return A clusterProcessorStatusHistoryEntity
-     */
-    @GET
-    @Consumes(MediaType.WILDCARD)
-    @Produces({MediaType.APPLICATION_XML, MediaType.APPLICATION_JSON})
-    @Path("/connections/{id}/status/history")
-    @PreAuthorize("hasAnyRole('ROLE_MONITOR', 'ROLE_DFM', 'ROLE_ADMIN')")
-    @ApiOperation(
-            value = "Gets connection status history across the cluster",
-            response = ClusterStatusHistoryEntity.class,
-            authorizations = {
-                @Authorization(value = "Read Only", type = "ROLE_MONITOR"),
-                @Authorization(value = "DFM", type = "ROLE_DFM"),
-                @Authorization(value = "Admin", type = "ROLE_ADMIN")
-            }
-    )
-    @ApiResponses(
-            value = {
-                @ApiResponse(code = 400, message = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
-                @ApiResponse(code = 401, message = "Client could not be authenticated."),
-                @ApiResponse(code = 403, message = "Client is not authorized to make this request."),
-                @ApiResponse(code = 404, message = "The specified resource could not be found."),
-                @ApiResponse(code = 409, message = "The request was valid but NiFi was not in the appropriate state to process it. Retrying the same request later may be successful.")
-            }
-    )
-    public Response getConnectionStatusHistory(
-            @ApiParam(
-                    value = "If the client id is not specified, new one will be generated. This value (whether specified or generated) is included in the response.",
-                    required = false
-            )
-            @QueryParam(CLIENT_ID) @DefaultValue(StringUtils.EMPTY) ClientIdParameter clientId,
-            @ApiParam(
-                    value = "The connection id.",
-                    required = true
-            )
-            @PathParam("id") String id) {
-
-        if (properties.isClusterManager()) {
-            final ClusterStatusHistoryDTO dto = serviceFacade.getClusterConnectionStatusHistory(id);
-
-            // create the revision
-            RevisionDTO revision = new RevisionDTO();
-            revision.setClientId(clientId.getClientId());
-
-            // create entity
-            final ClusterStatusHistoryEntity entity = new ClusterStatusHistoryEntity();
-            entity.setClusterStatusHistory(dto);
             entity.setRevision(revision);
 
             // generate the response
@@ -827,66 +765,6 @@ public class ClusterResource extends ApplicationResource {
         throw new IllegalClusterResourceRequestException("Only a cluster manager can process the request.");
     }
 
-    /**
-     * Gets the process group status history for every node.
-     *
-     * @param clientId Optional client id. If the client id is not specified, a new one will be generated. This value (whether specified or generated) is included in the response.
-     * @param id The id of the process group
-     * @return A clusterProcessGroupStatusHistoryEntity
-     */
-    @GET
-    @Consumes(MediaType.WILDCARD)
-    @Produces({MediaType.APPLICATION_XML, MediaType.APPLICATION_JSON})
-    @Path("/process-groups/{id}/status/history")
-    @PreAuthorize("hasAnyRole('ROLE_MONITOR', 'ROLE_DFM', 'ROLE_ADMIN')")
-    @ApiOperation(
-            value = "Gets process group status history across the cluster",
-            response = ClusterStatusHistoryEntity.class,
-            authorizations = {
-                @Authorization(value = "Read Only", type = "ROLE_MONITOR"),
-                @Authorization(value = "DFM", type = "ROLE_DFM"),
-                @Authorization(value = "Admin", type = "ROLE_ADMIN")
-            }
-    )
-    @ApiResponses(
-            value = {
-                @ApiResponse(code = 400, message = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
-                @ApiResponse(code = 401, message = "Client could not be authenticated."),
-                @ApiResponse(code = 403, message = "Client is not authorized to make this request."),
-                @ApiResponse(code = 404, message = "The specified resource could not be found."),
-                @ApiResponse(code = 409, message = "The request was valid but NiFi was not in the appropriate state to process it. Retrying the same request later may be successful.")
-            }
-    )
-    public Response getProcessGroupStatusHistory(
-            @ApiParam(
-                    value = "If the client id is not specified, new one will be generated. This value (whether specified or generated) is included in the response.",
-                    required = false
-            )
-            @QueryParam(CLIENT_ID) @DefaultValue(StringUtils.EMPTY) ClientIdParameter clientId,
-            @ApiParam(
-                    value = "The process group id.",
-                    required = true
-            )
-            @PathParam("id") String id) {
-
-        if (properties.isClusterManager()) {
-            final ClusterStatusHistoryDTO dto = serviceFacade.getClusterProcessGroupStatusHistory(id);
-
-            // create the revision
-            RevisionDTO revision = new RevisionDTO();
-            revision.setClientId(clientId.getClientId());
-
-            // create entity
-            final ClusterStatusHistoryEntity entity = new ClusterStatusHistoryEntity();
-            entity.setClusterStatusHistory(dto);
-            entity.setRevision(revision);
-
-            // generate the response
-            return generateOkResponse(entity).build();
-        }
-
-        throw new IllegalClusterResourceRequestException("Only a cluster manager can process the request.");
-    }
 
     /**
      * Gets the remote process group status for every node.
@@ -1074,66 +952,6 @@ public class ClusterResource extends ApplicationResource {
         throw new IllegalClusterResourceRequestException("Only a cluster manager can process the request.");
     }
 
-    /**
-     * Gets the remote process group status history for every node.
-     *
-     * @param clientId Optional client id. If the client id is not specified, a new one will be generated. This value (whether specified or generated) is included in the response.
-     * @param id The id of the processor
-     * @return A clusterRemoteProcessGroupStatusHistoryEntity
-     */
-    @GET
-    @Consumes(MediaType.WILDCARD)
-    @Produces({MediaType.APPLICATION_XML, MediaType.APPLICATION_JSON})
-    @Path("/remote-process-groups/{id}/status/history")
-    @PreAuthorize("hasAnyRole('ROLE_MONITOR', 'ROLE_DFM', 'ROLE_ADMIN')")
-    @ApiOperation(
-            value = "Gets the remote process group status history across the cluster",
-            response = ClusterStatusHistoryEntity.class,
-            authorizations = {
-                @Authorization(value = "Read Only", type = "ROLE_MONITOR"),
-                @Authorization(value = "DFM", type = "ROLE_DFM"),
-                @Authorization(value = "Admin", type = "ROLE_ADMIN")
-            }
-    )
-    @ApiResponses(
-            value = {
-                @ApiResponse(code = 400, message = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
-                @ApiResponse(code = 401, message = "Client could not be authenticated."),
-                @ApiResponse(code = 403, message = "Client is not authorized to make this request."),
-                @ApiResponse(code = 404, message = "The specified resource could not be found."),
-                @ApiResponse(code = 409, message = "The request was valid but NiFi was not in the appropriate state to process it. Retrying the same request later may be successful.")
-            }
-    )
-    public Response getRemoteProcessGroupStatusHistory(
-            @ApiParam(
-                    value = "If the client id is not specified, new one will be generated. This value (whether specified or generated) is included in the response.",
-                    required = false
-            )
-            @QueryParam(CLIENT_ID) @DefaultValue(StringUtils.EMPTY) ClientIdParameter clientId,
-            @ApiParam(
-                    value = "The remote process group id.",
-                    required = true
-            )
-            @PathParam("id") String id) {
-
-        if (properties.isClusterManager()) {
-            final ClusterStatusHistoryDTO dto = serviceFacade.getClusterRemoteProcessGroupStatusHistory(id);
-
-            // create the revision
-            RevisionDTO revision = new RevisionDTO();
-            revision.setClientId(clientId.getClientId());
-
-            // create entity
-            final ClusterStatusHistoryEntity entity = new ClusterStatusHistoryEntity();
-            entity.setClusterStatusHistory(dto);
-            entity.setRevision(revision);
-
-            // generate the response
-            return generateOkResponse(entity).build();
-        }
-
-        throw new IllegalClusterResourceRequestException("Only a cluster manager can process the request.");
-    }
 
     // setters
     public void setServiceFacade(NiFiServiceFacade serviceFacade) {
@@ -1144,4 +962,7 @@ public class ClusterResource extends ApplicationResource {
         this.properties = properties;
     }
 
+    public void setClusterManager(WebClusterManager clusterManager) {
+        this.clusterManager = clusterManager;
+    }
 }

@@ -16,10 +16,14 @@
  */
 package org.apache.nifi.web.api.dto.status;
 
-import com.wordnik.swagger.annotations.ApiModelProperty;
+import java.util.ArrayList;
 import java.util.List;
+
 import javax.xml.bind.annotation.XmlType;
+
 import org.apache.nifi.web.api.dto.BulletinDTO;
+
+import com.wordnik.swagger.annotations.ApiModelProperty;
 
 /**
  * The status of a component in this NiFi.
@@ -41,5 +45,13 @@ public abstract class StatusDTO {
 
     public void setBulletins(List<BulletinDTO> bulletins) {
         this.bulletins = bulletins;
+    }
+
+    public List<BulletinDTO> cloneBulletins() {
+        if (bulletins == null) {
+            return null;
+        }
+
+        return new ArrayList<>(bulletins);
     }
 }

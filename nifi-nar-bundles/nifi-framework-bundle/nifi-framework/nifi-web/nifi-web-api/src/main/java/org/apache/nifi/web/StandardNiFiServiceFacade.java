@@ -16,6 +16,25 @@
  */
 package org.apache.nifi.web;
 
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Map;
+import java.util.Set;
+import java.util.TimeZone;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+
+import javax.ws.rs.WebApplicationException;
+
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.action.Action;
@@ -72,7 +91,6 @@ import org.apache.nifi.remote.RootGroupPort;
 import org.apache.nifi.reporting.Bulletin;
 import org.apache.nifi.reporting.BulletinQuery;
 import org.apache.nifi.reporting.BulletinRepository;
-import org.apache.nifi.reporting.ComponentType;
 import org.apache.nifi.user.AccountStatus;
 import org.apache.nifi.user.NiFiUser;
 import org.apache.nifi.user.NiFiUserGroup;
@@ -131,7 +149,6 @@ import org.apache.nifi.web.api.dto.status.ClusterProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.ClusterProcessorStatusDTO;
 import org.apache.nifi.web.api.dto.status.ClusterRemoteProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.ClusterStatusDTO;
-import org.apache.nifi.web.api.dto.status.ClusterStatusHistoryDTO;
 import org.apache.nifi.web.api.dto.status.ControllerStatusDTO;
 import org.apache.nifi.web.api.dto.status.NodeConnectionStatusDTO;
 import org.apache.nifi.web.api.dto.status.NodePortStatusDTO;
@@ -159,24 +176,6 @@ import org.apache.nifi.web.util.SnippetUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
-
-import javax.ws.rs.WebApplicationException;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.ListIterator;
-import java.util.Map;
-import java.util.Set;
-import java.util.TimeZone;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Implementation of NiFiServiceFacade that performs revision checking.
@@ -2105,78 +2104,13 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
 
     @Override
     public ProcessGroupStatusDTO getProcessGroupStatus(String groupId) {
-        ProcessGroupStatusDTO statusReport;
-        if (properties.isClusterManager()) {
-            final ProcessGroupStatus mergedProcessGroupStatus = clusterManager.getProcessGroupStatus(groupId);
-            if (mergedProcessGroupStatus == null) {
-                throw new ResourceNotFoundException(String.format("Unable to find status for process group %s.", groupId));
-            }
-            statusReport = dtoFactory.createProcessGroupStatusDto(clusterManager.getBulletinRepository(), mergedProcessGroupStatus);
-        } else {
-            statusReport = controllerFacade.getProcessGroupStatus(groupId);
-        }
-        return statusReport;
+        return controllerFacade.getProcessGroupStatus(groupId);
     }
 
     @Override
     public ControllerStatusDTO getControllerStatus() {
-        final ControllerStatusDTO controllerStatus;
-
-        if (properties.isClusterManager()) {
-            final Set<Node> connectedNodes = clusterManager.getNodes(Node.Status.CONNECTED);
-
-            if (connectedNodes.isEmpty()) {
-                throw new NoConnectedNodesException();
-            }
-
-            int activeThreadCount = 0;
-            long totalFlowFileObjectCount = 0;
-            long totalFlowFileByteCount = 0;
-            for (final Node node : connectedNodes) {
-                final HeartbeatPayload nodeHeartbeatPayload = node.getHeartbeatPayload();
-                if (nodeHeartbeatPayload == null) {
-                    continue;
-                }
-
-                activeThreadCount += nodeHeartbeatPayload.getActiveThreadCount();
-                totalFlowFileObjectCount += nodeHeartbeatPayload.getTotalFlowFileCount();
-                totalFlowFileByteCount += nodeHeartbeatPayload.getTotalFlowFileBytes();
-            }
-
-            controllerStatus = new ControllerStatusDTO();
-            controllerStatus.setActiveThreadCount(activeThreadCount);
-            controllerStatus.setQueued(FormatUtils.formatCount(totalFlowFileObjectCount) + " / " + FormatUtils.formatDataSize(totalFlowFileByteCount));
-
-            final int numNodes = clusterManager.getNodeIds().size();
-            controllerStatus.setConnectedNodes(connectedNodes.size() + " / " + numNodes);
-
-            // get the bulletins for the controller
-            final BulletinRepository bulletinRepository = clusterManager.getBulletinRepository();
-            controllerStatus.setBulletins(dtoFactory.createBulletinDtos(bulletinRepository.findBulletinsForController()));
-
-            // get the controller service bulletins
-            final BulletinQuery controllerServiceQuery = new BulletinQuery.Builder().sourceType(ComponentType.CONTROLLER_SERVICE).build();
-            controllerStatus.setControllerServiceBulletins(dtoFactory.createBulletinDtos(bulletinRepository.findBulletins(controllerServiceQuery)));
-
-            // get the reporting task bulletins
-            final BulletinQuery reportingTaskQuery = new BulletinQuery.Builder().sourceType(ComponentType.REPORTING_TASK).build();
-            controllerStatus.setReportingTaskBulletins(dtoFactory.createBulletinDtos(bulletinRepository.findBulletins(reportingTaskQuery)));
-
-            // get the component counts by extracting them from the roots' group status
-            final ProcessGroupStatus status = clusterManager.getProcessGroupStatus("root");
-            if (status != null) {
-                final ProcessGroupCounts counts = extractProcessGroupCounts(status);
-                controllerStatus.setRunningCount(counts.getRunningCount());
-                controllerStatus.setStoppedCount(counts.getStoppedCount());
-                controllerStatus.setInvalidCount(counts.getInvalidCount());
-                controllerStatus.setDisabledCount(counts.getDisabledCount());
-                controllerStatus.setActiveRemotePortCount(counts.getActiveRemotePortCount());
-                controllerStatus.setInactiveRemotePortCount(counts.getInactiveRemotePortCount());
-            }
-        } else {
-            // get the controller status
-            controllerStatus = controllerFacade.getControllerStatus();
-        }
+        // get the controller status
+        final ControllerStatusDTO controllerStatus = controllerFacade.getControllerStatus();
 
         // determine if there are any pending user accounts - only include if appropriate
         if (NiFiUserUtils.getAuthorities().contains(Authority.ROLE_ADMIN.toString())) {
@@ -3371,25 +3305,6 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
         return clusterRemoteProcessGroupStatusDto;
     }
 
-    @Override
-    public ClusterStatusHistoryDTO getClusterProcessorStatusHistory(String processorId) {
-        return clusterManager.getProcessorStatusHistory(processorId);
-    }
-
-    @Override
-    public ClusterStatusHistoryDTO getClusterConnectionStatusHistory(String connectionId) {
-        return clusterManager.getConnectionStatusHistory(connectionId);
-    }
-
-    @Override
-    public ClusterStatusHistoryDTO getClusterProcessGroupStatusHistory(String processGroupId) {
-        return clusterManager.getProcessGroupStatusHistory(processGroupId);
-    }
-
-    @Override
-    public ClusterStatusHistoryDTO getClusterRemoteProcessGroupStatusHistory(String remoteProcessGroupId) {
-        return clusterManager.getRemoteProcessGroupStatusHistory(remoteProcessGroupId);
-    }
 
     @Override
     public NodeStatusDTO getNodeStatus(String nodeId) {

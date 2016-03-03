@@ -16,15 +16,18 @@
  */
 package org.apache.nifi.web.api.dto.status;
 
-import com.wordnik.swagger.annotations.ApiModelProperty;
+import java.util.ArrayList;
 import java.util.List;
+
 import javax.xml.bind.annotation.XmlType;
+
+import com.wordnik.swagger.annotations.ApiModelProperty;
 
 /**
  * The status of a remote process group in this NiFi.
  */
 @XmlType(name = "remoteProcessGroupStatus")
-public class RemoteProcessGroupStatusDTO extends StatusDTO {
+public class RemoteProcessGroupStatusDTO extends StatusDTO implements Cloneable {
 
     private String id;
     private String groupId;
@@ -35,15 +38,18 @@ public class RemoteProcessGroupStatusDTO extends StatusDTO {
 
     private List<String> authorizationIssues;
 
+    private Integer flowFilesSent = 0;
+    private Long bytesSent = 0L;
     private String sent;
+
+    private Integer flowFilesReceived = 0;
+    private Long bytesReceived = 0L;
     private String received;
 
     /**
      * @return The id for the remote process group
      */
-    @ApiModelProperty(
-            value = "The id of the remote process group."
-    )
+    @ApiModelProperty("The id of the remote process group.")
     public String getId() {
         return id;
     }
@@ -55,9 +61,7 @@ public class RemoteProcessGroupStatusDTO extends StatusDTO {
     /**
      * @return id of the group this remote process group is in
      */
-    @ApiModelProperty(
-            value = "The id of the parent process group the remote process group resides in."
-    )
+    @ApiModelProperty("The id of the parent process group the remote process group resides in.")
     public String getGroupId() {
         return groupId;
     }
@@ -69,9 +73,7 @@ public class RemoteProcessGroupStatusDTO extends StatusDTO {
     /**
      * @return URI of the target system
      */
-    @ApiModelProperty(
-            value = "The URI of the target system."
-    )
+    @ApiModelProperty("The URI of the target system.")
     public String getTargetUri() {
         return targetUri;
     }
@@ -83,9 +85,7 @@ public class RemoteProcessGroupStatusDTO extends StatusDTO {
     /**
      * @return name of this remote process group
      */
-    @ApiModelProperty(
-            value = "The name of the remote process group."
-    )
+    @ApiModelProperty("The name of the remote process group.")
     public String getName() {
         return name;
     }
@@ -97,9 +97,7 @@ public class RemoteProcessGroupStatusDTO extends StatusDTO {
     /**
      * @return transmission status of this remote process group
      */
-    @ApiModelProperty(
-            value = "The transmission status of the remote process group."
-    )
+    @ApiModelProperty("The transmission status of the remote process group.")
     public String getTransmissionStatus() {
         return transmissionStatus;
     }
@@ -111,9 +109,7 @@ public class RemoteProcessGroupStatusDTO extends StatusDTO {
     /**
      * @return number of active threads
      */
-    @ApiModelProperty(
-            value = "The number of active threads for the remote process group."
-    )
+    @ApiModelProperty("The number of active threads for the remote process group.")
     public Integer getActiveThreadCount() {
         return activeThreadCount;
     }
@@ -125,9 +121,7 @@ public class RemoteProcessGroupStatusDTO extends StatusDTO {
     /**
      * @return any remote authorization issues for this remote process group
      */
-    @ApiModelProperty(
-            value = "Any remote authorization issues for the remote process group."
-    )
+    @ApiModelProperty("Any remote authorization issues for the remote process group.")
     public List<String> getAuthorizationIssues() {
         return authorizationIssues;
     }
@@ -139,9 +133,7 @@ public class RemoteProcessGroupStatusDTO extends StatusDTO {
     /**
      * @return Formatted description of the amount of data sent to this remote process group
      */
-    @ApiModelProperty(
-            value = "The count/size of the flowfiles sent to the remote process group in the last 5 minutes."
-    )
+    @ApiModelProperty("The count/size of the flowfiles sent to the remote process group in the last 5 minutes.")
     public String getSent() {
         return sent;
     }
@@ -150,18 +142,75 @@ public class RemoteProcessGroupStatusDTO extends StatusDTO {
         this.sent = sent;
     }
 
+
     /**
      * @return Formatted description of the amount of data received from this remote process group
      */
-    @ApiModelProperty(
-            value = "The count/size of the flowfiles received from the remote process group in the last 5 minutes."
-    )
+    @ApiModelProperty("The count/size of the flowfiles received from the remote process group in the last 5 minutes.")
     public String getReceived() {
         return received;
     }
 
     public void setReceived(String received) {
         this.received = received;
+    }
+
+    @ApiModelProperty("The number of FlowFiles sent to the remote process group in the last 5 minutes.")
+    public Integer getFlowFilesSent() {
+        return flowFilesSent;
+    }
+
+    public void setFlowFilesSent(Integer flowFilesSent) {
+        this.flowFilesSent = flowFilesSent;
+    }
+
+    @ApiModelProperty("The size of the FlowFiles sent to the remote process group in the last 5 minutes.")
+    public Long getBytesSent() {
+        return bytesSent;
+    }
+
+    public void setBytesSent(Long bytesSent) {
+        this.bytesSent = bytesSent;
+    }
+
+    @ApiModelProperty("The number of FlowFiles received from the remote process group in the last 5 minutes.")
+    public Integer getFlowFilesReceived() {
+        return flowFilesReceived;
+    }
+
+    public void setFlowFilesReceived(Integer flowFilesReceived) {
+        this.flowFilesReceived = flowFilesReceived;
+    }
+
+    @ApiModelProperty("The size of the FlowFiles received from the remote process group in the last 5 minutes.")
+    public Long getBytesReceived() {
+        return bytesReceived;
+    }
+
+    public void setBytesReceived(Long bytesReceived) {
+        this.bytesReceived = bytesReceived;
+    }
+
+
+    @Override
+    public RemoteProcessGroupStatusDTO clone() {
+        final RemoteProcessGroupStatusDTO other = new RemoteProcessGroupStatusDTO();
+        other.setId(getId());
+        other.setGroupId(getGroupId());
+        other.setName(getName());
+        other.setTargetUri(getTargetUri());
+        other.setTransmissionStatus(getTransmissionStatus());
+        other.setActiveThreadCount(getActiveThreadCount());
+        other.setAuthorizationIssues(getAuthorizationIssues() == null ? null : new ArrayList<String>(getAuthorizationIssues()));
+        other.setFlowFilesSent(getFlowFilesSent());
+        other.setBytesSent(getBytesSent());
+        other.setFlowFilesReceived(getFlowFilesReceived());
+        other.setBytesReceived(getBytesReceived());
+        other.setReceived(getReceived());
+        other.setSent(getSent());
+        other.setBulletins(cloneBulletins());
+
+        return other;
     }
 
 }

@@ -524,6 +524,10 @@ public class ControllerResource extends ApplicationResource {
             )
             @QueryParam(CLIENT_ID) @DefaultValue(StringUtils.EMPTY) ClientIdParameter clientId) {
 
+        if (properties.isClusterManager()) {
+            return clusterManager.applyRequest(HttpMethod.GET, getAbsolutePath(), getRequestParameters(true), getHeaders()).getResponse();
+        }
+
         final ControllerStatusDTO controllerStatus = serviceFacade.getControllerStatus();
 
         // create the revision
