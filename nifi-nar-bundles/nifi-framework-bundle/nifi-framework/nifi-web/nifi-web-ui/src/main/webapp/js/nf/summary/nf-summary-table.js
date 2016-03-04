@@ -364,11 +364,7 @@ nf.SummaryTable = (function () {
                 }
 
                 if (nf.Common.SUPPORTS_SVG) {
-                    if (isClustered) {
-                        markup += '<img src="images/iconChart.png" title="Show History" class="pointer show-cluster-processor-status-history" style="margin-top: 2px;"/>&nbsp;';
-                    } else {
-                        markup += '<img src="images/iconChart.png" title="Show History" class="pointer show-processor-status-history" style="margin-top: 2px;"/>&nbsp;';
-                    }
+                    markup += '<img src="images/iconChart.png" title="Show History" class="pointer show-processor-status-history" style="margin-top: 2px;"/>&nbsp;';
                 }
 
                 if (isClustered) {
@@ -432,10 +428,8 @@ nf.SummaryTable = (function () {
             if (processorsGrid.getColumns()[args.cell].id === 'actions') {
                 if (target.hasClass('go-to')) {
                     goTo(item.groupId, item.id);
-                } else if (target.hasClass('show-cluster-processor-status-history')) {
-                    nf.StatusHistory.showClusterProcessorChart(item.groupId, item.id);
                 } else if (target.hasClass('show-processor-status-history')) {
-                    nf.StatusHistory.showStandaloneProcessorChart(item.groupId, item.id);
+                    nf.StatusHistory.showProcessorChart(item.groupId, item.id);
                 } else if (target.hasClass('show-cluster-processor-summary')) {
                     // load the cluster processor summary
                     loadClusterProcessorSummary(item.id);
@@ -616,11 +610,7 @@ nf.SummaryTable = (function () {
                 }
 
                 if (nf.Common.SUPPORTS_SVG) {
-                    if (isClustered) {
-                        markup += '<img src="images/iconChart.png" title="Show History" class="pointer show-cluster-connection-status-history" style="margin-top: 2px;"/>&nbsp;';
-                    } else {
-                        markup += '<img src="images/iconChart.png" title="Show History" class="pointer show-connection-status-history" style="margin-top: 2px;"/>&nbsp;';
-                    }
+                    markup += '<img src="images/iconChart.png" title="Show History" class="pointer show-connection-status-history" style="margin-top: 2px;"/>&nbsp;';
                 }
 
                 if (isClustered) {
@@ -684,10 +674,8 @@ nf.SummaryTable = (function () {
             if (connectionsGrid.getColumns()[args.cell].id === 'actions') {
                 if (target.hasClass('go-to')) {
                     goTo(item.groupId, item.id);
-                } else if (target.hasClass('show-cluster-connection-status-history')) {
-                    nf.StatusHistory.showClusterConnectionChart(item.groupId, item.id);
                 } else if (target.hasClass('show-connection-status-history')) {
-                    nf.StatusHistory.showStandaloneConnectionChart(item.groupId, item.id);
+                    nf.StatusHistory.showConnectionChart(item.groupId, item.id);
                 } else if (target.hasClass('show-cluster-connection-summary')) {
                     // load the cluster processor summary
                     loadClusterConnectionSummary(item.id);
@@ -848,11 +836,7 @@ nf.SummaryTable = (function () {
                 }
 
                 if (nf.Common.SUPPORTS_SVG) {
-                    if (isClustered) {
-                        markup += '<img src="images/iconChart.png" title="Show History" class="pointer show-cluster-process-group-status-history" style="margin-top: 2px;"/>&nbsp;';
-                    } else {
-                        markup += '<img src="images/iconChart.png" title="Show History" class="pointer show-process-group-status-history" style="margin-top: 2px;"/>&nbsp;';
-                    }
+                    markup += '<img src="images/iconChart.png" title="Show History" class="pointer show-process-group-status-history" style="margin-top: 2px;"/>&nbsp;';
                 }
 
                 if (isClustered) {
@@ -919,10 +903,8 @@ nf.SummaryTable = (function () {
                         parent.nf.CanvasUtils.enterGroup(item.id);
                         parent.$('#shell-close-button').click();
                     }
-                } else if (target.hasClass('show-cluster-process-group-status-history')) {
-                    nf.StatusHistory.showClusterProcessGroupChart(item.groupId, item.id);
                 } else if (target.hasClass('show-process-group-status-history')) {
-                    nf.StatusHistory.showStandaloneProcessGroupChart(item.groupId, item.id);
+                    nf.StatusHistory.showProcessGroupChart(item.groupId, item.id);
                 } else if (target.hasClass('show-cluster-process-group-summary')) {
                     // load the cluster processor summary
                     loadClusterProcessGroupSummary(item.id);
@@ -1563,11 +1545,7 @@ nf.SummaryTable = (function () {
                 }
 
                 if (nf.Common.SUPPORTS_SVG) {
-                    if (isClustered) {
-                        markup += '<img src="images/iconChart.png" title="Show History" class="pointer show-cluster-remote-process-group-status-history" style="margin-top: 2px;"/>&nbsp;';
-                    } else {
-                        markup += '<img src="images/iconChart.png" title="Show History" class="pointer show-remote-process-group-status-history" style="margin-top: 2px;"/>&nbsp;';
-                    }
+                    markup += '<img src="images/iconChart.png" title="Show History" class="pointer show-remote-process-group-status-history" style="margin-top: 2px;"/>&nbsp;';
                 }
 
                 if (isClustered) {
@@ -1631,10 +1609,8 @@ nf.SummaryTable = (function () {
             if (remoteProcessGroupsGrid.getColumns()[args.cell].id === 'actions') {
                 if (target.hasClass('go-to')) {
                     goTo(item.groupId, item.id);
-                } else if (target.hasClass('show-cluster-remote-process-group-status-history')) {
-                    nf.StatusHistory.showClusterRemoteProcessGroupChart(item.groupId, item.id);
                 } else if (target.hasClass('show-remote-process-group-status-history')) {
-                    nf.StatusHistory.showStandaloneRemoteProcessGroupChart(item.groupId, item.id);
+                    nf.StatusHistory.showRemoteProcessGroupChart(item.groupId, item.id);
                 } else if (target.hasClass('show-cluster-remote-process-group-summary')) {
                     // load the cluster processor summary
                     loadClusterRemoteProcessGroupSummary(item.id);

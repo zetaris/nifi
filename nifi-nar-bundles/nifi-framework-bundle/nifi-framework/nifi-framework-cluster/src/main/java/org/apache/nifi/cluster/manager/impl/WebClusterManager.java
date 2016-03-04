@@ -224,6 +224,7 @@ import org.apache.nifi.web.api.dto.provenance.ProvenanceEventDTO;
 import org.apache.nifi.web.api.dto.provenance.ProvenanceRequestDTO;
 import org.apache.nifi.web.api.dto.provenance.ProvenanceResultsDTO;
 import org.apache.nifi.web.api.dto.status.ControllerStatusDTO;
+import org.apache.nifi.web.api.dto.status.NodeStatusSnapshotsDTO;
 import org.apache.nifi.web.api.dto.status.ProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.RemoteProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.StatusDTO;
@@ -3848,7 +3849,7 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
         final StatusHistoryEntity responseEntity = clientResponse.getClientResponse().getEntity(StatusHistoryEntity.class);
 
         StatusHistoryDTO lastStatusHistory = null;
-        final Map<String, List<StatusSnapshotDTO>> nodeStatusHistories = new HashMap<>(updatedNodesMap.size());
+        final List<NodeStatusSnapshotsDTO> nodeStatusSnapshots = new ArrayList<>(updatedNodesMap.size());
         for (final NodeResponse nodeResponse : updatedNodesMap.values()) {
             if (problematicNodeResponses.contains(nodeResponse)) {
                 continue;
@@ -3859,14 +3860,18 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
             lastStatusHistory = nodeStatus;
 
             final NodeIdentifier nodeId = nodeResponse.getNodeId();
-            final String nodeName = nodeId.getApiAddress() + ":" + nodeId.getApiPort();
-            nodeStatusHistories.put(nodeName, nodeStatus.getAggregateStatusSnapshots());
+            final NodeStatusSnapshotsDTO nodeStatuSnapshot = new NodeStatusSnapshotsDTO();
+            nodeStatuSnapshot.setNodeId(nodeId.getId());
+            nodeStatuSnapshot.setAddress(nodeId.getApiAddress());
+            nodeStatuSnapshot.setApiPort(nodeId.getApiPort());
+            nodeStatuSnapshot.setStatusSnapshots(nodeStatus.getAggregateStatusSnapshots());
+            nodeStatusSnapshots.add(nodeStatuSnapshot);
         }
 
         final StatusHistoryDTO clusterStatusHistory = new StatusHistoryDTO();
-        clusterStatusHistory.setAggregateStatusSnapshots(mergeStatusHistories(nodeStatusHistories, metricDescriptors));
+        clusterStatusHistory.setAggregateStatusSnapshots(mergeStatusHistories(nodeStatusSnapshots, metricDescriptors));
         clusterStatusHistory.setGenerated(new Date());
-        clusterStatusHistory.setNodeStatusSnapshots(nodeStatusHistories);
+        clusterStatusHistory.setNodeStatusSnapshots(nodeStatusSnapshots);
         if (lastStatusHistory != null) {
             clusterStatusHistory.setComponentDetails(lastStatusHistory.getComponentDetails());
             clusterStatusHistory.setFieldDescriptors(lastStatusHistory.getFieldDescriptors());
@@ -4456,14 +4461,14 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
         return snapshot;
     }
 
-    private List<StatusSnapshotDTO> mergeStatusHistories(final Map<String, List<StatusSnapshotDTO>> nodeStatusHistories, final Map<String, MetricDescriptor<?>> metricDescriptors) {
+    private List<StatusSnapshotDTO> mergeStatusHistories(final List<NodeStatusSnapshotsDTO> nodeStatusSnapshots, final Map<String, MetricDescriptor<?>> metricDescriptors) {
         // Map of "normalized Date" (i.e., a time range, essentially) to all Snapshots for that time. The list
         // will contain one snapshot for each node.
         final Map<Date, List<StatusSnapshot>> snapshotsToAggregate = new TreeMap<>();
 
         // group status snapshot's for each node by date
-        for (final List<StatusSnapshotDTO> snapshotDtos : nodeStatusHistories.values()) {
-            for (final StatusSnapshotDTO snapshotDto : snapshotDtos) {
+        for (final NodeStatusSnapshotsDTO nodeStatusSnapshot : nodeStatusSnapshots) {
+            for (final StatusSnapshotDTO snapshotDto : nodeStatusSnapshot.getStatusSnapshots()) {
                 final StatusSnapshot snapshot = createSnapshot(snapshotDto, metricDescriptors);
                 final Date normalizedDate = normalizeStatusSnapshotDate(snapshot.getTimestamp(), componentStatusSnapshotMillis);
                 List<StatusSnapshot> snapshots = snapshotsToAggregate.get(normalizedDate);

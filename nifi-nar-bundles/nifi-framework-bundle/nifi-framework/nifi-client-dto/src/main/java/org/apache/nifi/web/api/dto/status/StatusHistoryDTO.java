@@ -16,17 +16,14 @@
  */
 package org.apache.nifi.web.api.dto.status;
 
-import java.util.Date;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import com.wordnik.swagger.annotations.ApiModelProperty;
+import org.apache.nifi.web.api.dto.util.TimeAdapter;
 
 import javax.xml.bind.annotation.XmlType;
 import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
-
-import org.apache.nifi.web.api.dto.util.TimeAdapter;
-
-import com.wordnik.swagger.annotations.ApiModelProperty;
+import java.util.Date;
+import java.util.LinkedHashMap;
+import java.util.List;
 
 /**
  * DTO for serializing the status history of a single component across the cluster.
@@ -39,8 +36,7 @@ public class StatusHistoryDTO {
     private LinkedHashMap<String, String> componentDetails;
     private List<StatusDescriptorDTO> fieldDescriptors;
     private List<StatusSnapshotDTO> aggregateStatusSnapshots;
-    private Map<String, List<StatusSnapshotDTO>> nodeStatusSnapshots;
-
+    private List<NodeStatusSnapshotsDTO> nodeStatusSnapshots;
 
     /**
      * @return when this status history was generated
@@ -87,13 +83,13 @@ public class StatusHistoryDTO {
         this.aggregateStatusSnapshots = aggregateStatusSnapshots;
     }
 
-    @ApiModelProperty("A Map of Node Address to a list of StatusSnapshotDTO objects that provide the actual metric values for the component, for that node. "
+    @ApiModelProperty("The NodeStatusSnapshotsDTO objects that provide the actual metric values for the component, for each node. "
         + "If the NiFi instance is not clustered, this value will be null.")
-    public Map<String, List<StatusSnapshotDTO>> getNodeStatusSnapshots() {
+    public List<NodeStatusSnapshotsDTO> getNodeStatusSnapshots() {
         return nodeStatusSnapshots;
     }
 
-    public void setNodeStatusSnapshots(Map<String, List<StatusSnapshotDTO>> nodeStatusSnapshots) {
+    public void setNodeStatusSnapshots(List<NodeStatusSnapshotsDTO> nodeStatusSnapshots) {
         this.nodeStatusSnapshots = nodeStatusSnapshots;
     }
 }
