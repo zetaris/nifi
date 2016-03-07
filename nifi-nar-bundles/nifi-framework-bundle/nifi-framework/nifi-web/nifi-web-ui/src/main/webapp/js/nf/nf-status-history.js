@@ -111,6 +111,9 @@ nf.StatusHistory = (function () {
                 label: config.nifiInstanceLabel,
                 snapshots: componentStatusHistory.aggregateStatusSnapshots
             });
+        } else {
+        	insufficientHistory();
+        	return;
         }
 
         // get the status for each node in the cluster if applicable
