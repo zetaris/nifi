@@ -213,7 +213,7 @@ import org.slf4j.LoggerFactory;
 
 import com.sun.jersey.api.client.ClientHandlerException;
 
-public class FlowController implements EventAccess, ControllerServiceProvider, ReportingTaskProvider, Heartbeater, QueueProvider {
+public class FlowController implements EventAccess, ControllerServiceProvider, ReportingTaskProvider, QueueProvider {
 
     // default repository implementations
     public static final String DEFAULT_FLOWFILE_REPO_IMPLEMENTATION = "org.apache.nifi.controller.repository.WriteAheadFlowFileRepository";
@@ -428,7 +428,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
             throw new RuntimeException(e);
         }
 
-        processScheduler = new StandardProcessScheduler(this, this, encryptor, stateManagerProvider);
+        processScheduler = new StandardProcessScheduler(this, encryptor, stateManagerProvider);
         eventDrivenWorkerQueue = new EventDrivenWorkerQueue(false, false, processScheduler);
         controllerServiceProvider = new StandardControllerServiceProvider(processScheduler, bulletinRepository, stateManagerProvider);
 
@@ -824,7 +824,6 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
             .resourceClaimManager(resourceClaimManager)
             .flowFileRepository(flowFileRepository)
             .provenanceRepository(provenanceEventRepository)
-            .heartbeater(this)
             .build();
     }
 
@@ -2890,7 +2889,6 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
     public Counter resetCounter(final String identifier) {
         final CounterRepository counterRepo = counterRepositoryRef.get();
         final Counter resetValue = counterRepo.resetCounter(identifier);
-        heartbeat();
         return resetValue;
     }
 
@@ -3597,7 +3595,6 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         }
     }
 
-    @Override
     public void heartbeat() {
         if (!isClustered()) {
             return;

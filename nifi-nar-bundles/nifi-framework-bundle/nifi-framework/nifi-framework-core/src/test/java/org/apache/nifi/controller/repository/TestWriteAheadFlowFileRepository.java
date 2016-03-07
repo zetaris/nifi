@@ -81,7 +81,7 @@ public class TestWriteAheadFlowFileRepository {
         when(connection.getDestination()).thenReturn(Mockito.mock(Connectable.class));
 
         final FlowFileSwapManager swapMgr = new MockFlowFileSwapManager();
-        final FlowFileQueue queue = new StandardFlowFileQueue("1234", connection, null, null, claimManager, null, swapMgr, null, 10000, null);
+        final FlowFileQueue queue = new StandardFlowFileQueue("1234", connection, null, null, claimManager, null, swapMgr, null, 10000);
 
         when(connection.getFlowFileQueue()).thenReturn(queue);
         queueProvider.addConnection(connection);
@@ -156,6 +156,7 @@ public class TestWriteAheadFlowFileRepository {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     public void testRestartWithOneRecord() throws IOException {
         final Path path = Paths.get("target/test-repo");
         if (Files.exists(path)) {

@@ -40,7 +40,6 @@ import org.apache.nifi.connectable.Port;
 import org.apache.nifi.controller.AbstractPort;
 import org.apache.nifi.controller.ConfigurationContext;
 import org.apache.nifi.controller.ControllerService;
-import org.apache.nifi.controller.Heartbeater;
 import org.apache.nifi.controller.ProcessScheduler;
 import org.apache.nifi.controller.ProcessorNode;
 import org.apache.nifi.controller.ReportingTaskNode;
@@ -73,7 +72,6 @@ public final class StandardProcessScheduler implements ProcessScheduler {
     private static final Logger LOG = LoggerFactory.getLogger(StandardProcessScheduler.class);
 
     private final ControllerServiceProvider controllerServiceProvider;
-    private final Heartbeater heartbeater;
     private final long administrativeYieldMillis;
     private final String administrativeYieldDuration;
     private final StateManagerProvider stateManagerProvider;
@@ -87,9 +85,8 @@ public final class StandardProcessScheduler implements ProcessScheduler {
 
     private final StringEncryptor encryptor;
 
-    public StandardProcessScheduler(final Heartbeater heartbeater, final ControllerServiceProvider controllerServiceProvider, final StringEncryptor encryptor,
+    public StandardProcessScheduler(final ControllerServiceProvider controllerServiceProvider, final StringEncryptor encryptor,
         final StateManagerProvider stateManagerProvider) {
-        this.heartbeater = heartbeater;
         this.controllerServiceProvider = controllerServiceProvider;
         this.encryptor = encryptor;
         this.stateManagerProvider = stateManagerProvider;
@@ -367,7 +364,6 @@ public final class StandardProcessScheduler implements ProcessScheduler {
 
                                 getSchedulingAgent(procNode).schedule(procNode, scheduleState);
 
-                                heartbeater.heartbeat();
                                 return;
                             }
                         } catch (final Exception e) {
@@ -446,7 +442,6 @@ public final class StandardProcessScheduler implements ProcessScheduler {
                     // If no threads currently running, call the OnStopped methods
                     if (state.getActiveThreadCount() == 0 && state.mustCallOnStoppedMethods()) {
                         ReflectionUtils.quietlyInvokeMethodsWithAnnotation(OnStopped.class, procNode.getProcessor(), processContext);
-                        heartbeater.heartbeat();
                     }
                 }
             }
@@ -525,7 +520,6 @@ public final class StandardProcessScheduler implements ProcessScheduler {
             final ConnectableProcessContext processContext = new ConnectableProcessContext(connectable, encryptor, getStateManager(connectable.getIdentifier()));
             try (final NarCloseable x = NarCloseable.withNarLoader()) {
                 ReflectionUtils.quietlyInvokeMethodsWithAnnotation(OnStopped.class, connectable, processContext);
-                heartbeater.heartbeat();
             }
         }
     }
@@ -636,12 +630,12 @@ public final class StandardProcessScheduler implements ProcessScheduler {
 
     @Override
     public void enableControllerService(final ControllerServiceNode service) {
-        service.enable(this.componentLifeCycleThreadPool, this.administrativeYieldMillis, this.heartbeater);
+        service.enable(this.componentLifeCycleThreadPool, this.administrativeYieldMillis);
     }
 
     @Override
     public void disableControllerService(final ControllerServiceNode service) {
-        service.disable(this.componentLifeCycleThreadPool, this.heartbeater);
+        service.disable(this.componentLifeCycleThreadPool);
     }
 
     @Override

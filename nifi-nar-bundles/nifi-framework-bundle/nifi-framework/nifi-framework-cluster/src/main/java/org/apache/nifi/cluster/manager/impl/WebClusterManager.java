@@ -126,7 +126,6 @@ import org.apache.nifi.cluster.protocol.message.ReconnectionRequestMessage;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.components.state.StateManagerProvider;
 import org.apache.nifi.controller.ControllerService;
-import org.apache.nifi.controller.Heartbeater;
 import org.apache.nifi.controller.ReportingTaskNode;
 import org.apache.nifi.controller.ScheduledState;
 import org.apache.nifi.controller.StandardFlowSerializer;
@@ -149,7 +148,6 @@ import org.apache.nifi.controller.service.ControllerServiceState;
 import org.apache.nifi.controller.service.StandardControllerServiceProvider;
 import org.apache.nifi.controller.state.SortedStateUtils;
 import org.apache.nifi.controller.state.manager.StandardStateManagerProvider;
-import org.apache.nifi.controller.status.history.ComponentStatusRepository;
 import org.apache.nifi.controller.status.history.ConnectionStatusDescriptor;
 import org.apache.nifi.controller.status.history.MetricDescriptor;
 import org.apache.nifi.controller.status.history.ProcessGroupStatusDescriptor;
@@ -176,7 +174,6 @@ import org.apache.nifi.logging.NiFiLog;
 import org.apache.nifi.logging.ReportingTaskLogObserver;
 import org.apache.nifi.nar.ExtensionManager;
 import org.apache.nifi.nar.NarCloseable;
-import org.apache.nifi.nar.NarThreadContextClassLoader;
 import org.apache.nifi.processor.SimpleProcessLogger;
 import org.apache.nifi.processor.StandardValidationContextFactory;
 import org.apache.nifi.remote.RemoteResourceManager;
@@ -202,6 +199,7 @@ import org.apache.nifi.util.ReflectionUtils;
 import org.apache.nifi.web.OptimisticLockingManager;
 import org.apache.nifi.web.Revision;
 import org.apache.nifi.web.UpdateRevision;
+import org.apache.nifi.web.api.dto.BulletinBoardDTO;
 import org.apache.nifi.web.api.dto.BulletinDTO;
 import org.apache.nifi.web.api.dto.ComponentStateDTO;
 import org.apache.nifi.web.api.dto.ControllerServiceDTO;
@@ -231,6 +229,7 @@ import org.apache.nifi.web.api.dto.status.StatusDTO;
 import org.apache.nifi.web.api.dto.status.StatusHistoryDTO;
 import org.apache.nifi.web.api.dto.status.StatusMerger;
 import org.apache.nifi.web.api.dto.status.StatusSnapshotDTO;
+import org.apache.nifi.web.api.entity.BulletinBoardEntity;
 import org.apache.nifi.web.api.entity.ComponentStateEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceReferencingComponentsEntity;
@@ -317,7 +316,6 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
      */
     private static final int DEFAULT_CONNECTION_REQUEST_TRY_AGAIN_SECONDS = 5;
 
-    public static final String DEFAULT_COMPONENT_STATUS_REPO_IMPLEMENTATION = "org.apache.nifi.controller.status.history.VolatileComponentStatusRepository";
 
     public static final Pattern PROCESSORS_URI_PATTERN = Pattern.compile("/nifi-api/controller/process-groups/(?:(?:root)|(?:[a-f0-9\\-]{36}))/processors");
     public static final Pattern PROCESSOR_URI_PATTERN = Pattern.compile("/nifi-api/controller/process-groups/(?:(?:root)|(?:[a-f0-9\\-]{36}))/processors/[a-f0-9\\-]{36}");
@@ -345,6 +343,7 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
     public static final String REPORTING_TASKS_URI = "/nifi-api/controller/reporting-tasks/node";
     public static final Pattern REPORTING_TASK_URI_PATTERN = Pattern.compile("/nifi-api/controller/reporting-tasks/node/[a-f0-9\\-]{36}");
     public static final Pattern REPORTING_TASK_STATE_URI_PATTERN = Pattern.compile("/nifi-api/controller/reporting-tasks/node/[a-f0-9\\-]{36}/state");
+    public static final Pattern BULLETIN_BOARD_URI_PATTERN = Pattern.compile("/nifi-api/controller/bulletin-board");
 
     public static final Pattern PROCESSOR_STATUS_HISTORY_URI_PATTERN =
         Pattern.compile("/nifi-api/controller/process-groups/(?:(?:root)|(?:[a-f0-9\\-]{36}))/processors/[a-f0-9\\-]{36}/status/history");
@@ -468,11 +467,7 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
             throw new RuntimeException(e);
         }
 
-        processScheduler = new StandardProcessScheduler(new Heartbeater() {
-            @Override
-            public void heartbeat() {
-            }
-        }, this, encryptor, stateManagerProvider);
+        processScheduler = new StandardProcessScheduler(this, encryptor, stateManagerProvider);
 
         // When we construct the scheduling agents, we can pass null for a lot of the arguments because we are only
         // going to be scheduling Reporting Tasks. Otherwise, it would not be okay.
@@ -1870,20 +1865,6 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
     }
 
 
-    private ComponentStatusRepository createComponentStatusRepository() {
-        final String implementationClassName = properties.getProperty(NiFiProperties.COMPONENT_STATUS_REPOSITORY_IMPLEMENTATION, DEFAULT_COMPONENT_STATUS_REPO_IMPLEMENTATION);
-        if (implementationClassName == null) {
-            throw new RuntimeException("Cannot create Component Status Repository because the NiFi Properties is missing the following property: "
-                    + NiFiProperties.COMPONENT_STATUS_REPOSITORY_IMPLEMENTATION);
-        }
-
-        try {
-            return NarThreadContextClassLoader.createInstance(implementationClassName, ComponentStatusRepository.class);
-        } catch (final Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     @Override
     public Set<Node> getNodes(final Status... statuses) {
         final Set<Status> desiredStatusSet = new HashSet<>();
@@ -2473,6 +2454,10 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
         return "GET".equalsIgnoreCase(method) && CONNECTION_STATUS_HISTORY_URI_PATTERN.matcher(uri.getPath()).matches();
     }
 
+    private static boolean isBulletinBoardEndpoint(final URI uri, final String method) {
+        return "GET".equalsIgnoreCase(method) && BULLETIN_BOARD_URI_PATTERN.matcher(uri.getPath()).matches();
+    }
+
 
     private static boolean isRemoteProcessGroupEndpoint(final URI uri, final String method) {
         if (("GET".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method)) && REMOTE_PROCESS_GROUP_URI_PATTERN.matcher(uri.getPath()).matches()) {
@@ -2577,9 +2562,10 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
                 || isControllerServiceReferenceEndpoint(uri, method) || isControllerServiceStateEndpoint(uri, method)
                 || isReportingTasksEndpoint(uri, method) || isReportingTaskEndpoint(uri, method) || isReportingTaskStateEndpoint(uri, method)
                 || isDropRequestEndpoint(uri, method) || isListFlowFilesEndpoint(uri, method)
-            || isGroupStatusEndpoint(uri, method) || isControllerStatusEndpoint(uri, method)
-            || isProcessorStatusHistoryEndpoint(uri, method) || isProcessGroupStatusHistoryEndpoint(uri, method)
-            || isRemoteProcessGroupStatusHistoryEndpoint(uri, method) || isConnectionStatusHistoryEndpoint(uri, method);
+                || isGroupStatusEndpoint(uri, method) || isControllerStatusEndpoint(uri, method)
+                || isProcessorStatusHistoryEndpoint(uri, method) || isProcessGroupStatusHistoryEndpoint(uri, method)
+                || isRemoteProcessGroupStatusHistoryEndpoint(uri, method) || isConnectionStatusHistoryEndpoint(uri, method)
+                || isBulletinBoardEndpoint(uri, method);
     }
 
     private void mergeProcessorValidationErrors(final ProcessorDTO processor, Map<NodeIdentifier, ProcessorDTO> processorMap) {
@@ -2748,6 +2734,34 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
         mergedBulletins.addAll(nodeBulletins);
         mergedBulletins.addAll(createBulletinDtos(ncmBulletins));
         return mergedBulletins;
+    }
+
+    private void mergeBulletinBoard(final BulletinBoardDTO nodeBulletinBoard, final Map<NodeIdentifier, BulletinBoardDTO> resultMap) {
+        final List<BulletinDTO> bulletinDtos = new ArrayList<>();
+        for (final Map.Entry<NodeIdentifier, BulletinBoardDTO> entry : resultMap.entrySet()) {
+            final NodeIdentifier nodeId = entry.getKey();
+            final BulletinBoardDTO boardDto = entry.getValue();
+            final String nodeAddress = nodeId.getApiAddress() + ":" + nodeId.getApiPort();
+
+            for (final BulletinDTO bulletin : boardDto.getBulletins()) {
+                bulletin.setNodeAddress(nodeAddress);
+                bulletinDtos.add(bulletin);
+            }
+        }
+
+        Collections.sort(bulletinDtos, new Comparator<BulletinDTO>() {
+            @Override
+            public int compare(final BulletinDTO o1, final BulletinDTO o2) {
+                final int timeComparison = o1.getTimestamp().compareTo(o2.getTimestamp());
+                if (timeComparison != 0) {
+                    return timeComparison;
+                }
+
+                return o1.getNodeAddress().compareTo(o2.getNodeAddress());
+            }
+        });
+
+        nodeBulletinBoard.setBulletins(bulletinDtos);
     }
 
     /**
@@ -3757,6 +3771,24 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
             mergeControllerStatus(statusRequest, resultsMap);
 
             clientResponse = new NodeResponse(clientResponse, responseEntity);
+        } else if (hasSuccessfulClientResponse && isBulletinBoardEndpoint(uri, method)) {
+            final BulletinBoardEntity responseEntity = clientResponse.getClientResponse().getEntity(BulletinBoardEntity.class);
+            final BulletinBoardDTO responseDto = responseEntity.getBulletinBoard();
+
+            final Map<NodeIdentifier, BulletinBoardDTO> resultsMap = new HashMap<>();
+            for (final NodeResponse nodeResponse : updatedNodesMap.values()) {
+                if (problematicNodeResponses.contains(nodeResponse)) {
+                    continue;
+                }
+
+                final BulletinBoardEntity nodeResponseEntity = nodeResponse == clientResponse ? responseEntity : nodeResponse.getClientResponse().getEntity(BulletinBoardEntity.class);
+                final BulletinBoardDTO nodeStatus = nodeResponseEntity.getBulletinBoard();
+
+                resultsMap.put(nodeResponse.getNodeId(), nodeStatus);
+            }
+            mergeBulletinBoard(responseDto, resultsMap);
+
+            clientResponse = new NodeResponse(clientResponse, responseEntity);
         } else if (hasSuccessfulClientResponse && isProcessorStatusHistoryEndpoint(uri, method)) {
             final Map<String, MetricDescriptor<?>> metricDescriptors = new HashMap<>();
             for (final ProcessorStatusDescriptor descriptor : ProcessorStatusDescriptor.values()) {
@@ -4462,25 +4494,40 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
     }
 
     private List<StatusSnapshotDTO> mergeStatusHistories(final List<NodeStatusSnapshotsDTO> nodeStatusSnapshots, final Map<String, MetricDescriptor<?>> metricDescriptors) {
-        // Map of "normalized Date" (i.e., a time range, essentially) to all Snapshots for that time. The list
-        // will contain one snapshot for each node.
-        final Map<Date, List<StatusSnapshot>> snapshotsToAggregate = new TreeMap<>();
+        // We want a Map<Date, List<StatusSnapshot>>, which is a Map of "normalized Date" (i.e., a time range, essentially)
+        // to all Snapshots for that time. The list will contain one snapshot for each node. However, we can have the case
+        // where the NCM has a different value for the componentStatusSnapshotMillis than the nodes have. In this case,
+        // we end up with multiple entries in the List<StatusSnapshot> for the same node/timestamp, which skews our aggregate
+        // results. In order to avoid this, we will use only the latest snapshot for a node that falls into the the time range
+        // of interest.
+        // To accomplish this, we have an intermediate data structure, which is a Map of "normalized Date" to an inner Map
+        // of Node Identifier to StatusSnapshot. We then will flatten this Map and aggregate the results.
+        final Map<Date, Map<String, StatusSnapshot>> dateToNodeSnapshots = new TreeMap<>();
 
         // group status snapshot's for each node by date
         for (final NodeStatusSnapshotsDTO nodeStatusSnapshot : nodeStatusSnapshots) {
             for (final StatusSnapshotDTO snapshotDto : nodeStatusSnapshot.getStatusSnapshots()) {
                 final StatusSnapshot snapshot = createSnapshot(snapshotDto, metricDescriptors);
                 final Date normalizedDate = normalizeStatusSnapshotDate(snapshot.getTimestamp(), componentStatusSnapshotMillis);
-                List<StatusSnapshot> snapshots = snapshotsToAggregate.get(normalizedDate);
-                if (snapshots == null) {
-                    snapshots = new ArrayList<>();
-                    snapshotsToAggregate.put(normalizedDate, snapshots);
+
+                Map<String, StatusSnapshot> nodeToSnapshotMap = dateToNodeSnapshots.get(normalizedDate);
+                if (nodeToSnapshotMap == null) {
+                    nodeToSnapshotMap = new HashMap<>();
+                    dateToNodeSnapshots.put(normalizedDate, nodeToSnapshotMap);
                 }
-                snapshots.add(snapshot);
+                nodeToSnapshotMap.put(nodeStatusSnapshot.getNodeId(), snapshot);
             }
         }
 
         // aggregate the snapshots by (normalized) timestamp
+        final Map<Date, List<StatusSnapshot>> snapshotsToAggregate = new TreeMap<>();
+        for (final Map.Entry<Date, Map<String, StatusSnapshot>> entry : dateToNodeSnapshots.entrySet()) {
+            final Date normalizedDate = entry.getKey();
+            final Map<String, StatusSnapshot> nodeToSnapshot = entry.getValue();
+            final List<StatusSnapshot> snapshotsForTimestamp = new ArrayList<>(nodeToSnapshot.values());
+            snapshotsToAggregate.put(normalizedDate, snapshotsForTimestamp);
+        }
+
         final List<StatusSnapshotDTO> aggregatedSnapshots = aggregate(snapshotsToAggregate);
         return aggregatedSnapshots;
     }

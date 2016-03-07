@@ -439,6 +439,8 @@ public class ControllerFacade {
         final ControllerStatusDTO controllerStatus = new ControllerStatusDTO();
         controllerStatus.setActiveThreadCount(flowController.getActiveThreadCount());
         controllerStatus.setQueued(FormatUtils.formatCount(controllerQueueSize.getObjectCount()) + " / " + FormatUtils.formatDataSize(controllerQueueSize.getByteCount()));
+        controllerStatus.setBytesQueued(controllerQueueSize.getByteCount());
+        controllerStatus.setFlowFilesQueued(controllerQueueSize.getObjectCount());
 
         final BulletinRepository bulletinRepository = getBulletinRepository();
         controllerStatus.setBulletins(dtoFactory.createBulletinDtos(bulletinRepository.findBulletinsForController()));
