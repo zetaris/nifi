@@ -14,36 +14,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.nifi.web.api.dto.status;
+
+import java.util.List;
 
 import javax.xml.bind.annotation.XmlType;
 
 import com.wordnik.swagger.annotations.ApiModelProperty;
 
-/**
- * The status for a port in this NiFi.
- */
 @XmlType(name = "portStatus")
-public class PortStatusDTO extends StatusDTO implements Cloneable {
-
+public class PortStatusDTO {
     private String id;
     private String groupId;
     private String name;
-
-    private Integer activeThreadCount = 0;
-    private Integer flowFilesIn = 0;
-    private Long bytesIn = 0L;
-    private String input;
-    private Integer flowFilesOut = 0;
-    private Long bytesOut = 0L;
-    private String output;
-
     private Boolean transmitting;
     private String runStatus;
 
-    /**
-     * @return whether this port has incoming or outgoing connections to a remote NiFi
-     */
+    private PortStatusSnapshotDTO aggregateStatus;
+    private List<NodePortStatusSnapshotDTO> nodeStatuses;
+
     @ApiModelProperty("Whether the port has incoming or outgoing connections to a remote NiFi.")
     public Boolean isTransmitting() {
         return transmitting;
@@ -53,21 +43,7 @@ public class PortStatusDTO extends StatusDTO implements Cloneable {
         this.transmitting = transmitting;
     }
 
-    /**
-     * @return the active thread count for this port
-     */
-    @ApiModelProperty("The active thread count for the port.")
-    public Integer getActiveThreadCount() {
-        return activeThreadCount;
-    }
 
-    public void setActiveThreadCount(Integer activeThreadCount) {
-        this.activeThreadCount = activeThreadCount;
-    }
-
-    /**
-     * @return id of this port
-     */
     @ApiModelProperty("The id of the port.")
     public String getId() {
         return id;
@@ -77,9 +53,7 @@ public class PortStatusDTO extends StatusDTO implements Cloneable {
         this.id = id;
     }
 
-    /**
-     * @return id of the group this port resides in
-     */
+
     @ApiModelProperty("The id of the parent process group of the port.")
     public String getGroupId() {
         return groupId;
@@ -89,9 +63,7 @@ public class PortStatusDTO extends StatusDTO implements Cloneable {
         this.groupId = groupId;
     }
 
-    /**
-     * @return name of this port
-     */
+
     @ApiModelProperty("The name of the port.")
     public String getName() {
         return name;
@@ -101,9 +73,7 @@ public class PortStatusDTO extends StatusDTO implements Cloneable {
         this.name = name;
     }
 
-    /**
-     * @return run status of this port
-     */
+
     @ApiModelProperty("The run status of the port.")
     public String getRunStatus() {
         return runStatus;
@@ -113,83 +83,23 @@ public class PortStatusDTO extends StatusDTO implements Cloneable {
         this.runStatus = runStatus;
     }
 
-    /**
-     * @return The total count and size of flow files that have been accepted in the last five minutes
-     */
-    @ApiModelProperty("The count/size of flowfiles that have been accepted in the last 5 minutes.")
-    public String getInput() {
-        return input;
+    @ApiModelProperty("A status snapshot that represents the aggregate stats of all nodes in the cluster. If the NiFi instance is "
+        + "a standalone instance, rather than a cluster, this represents the stats of the single instance.")
+    public PortStatusSnapshotDTO getAggregateStatus() {
+        return aggregateStatus;
     }
 
-    public void setInput(String input) {
-        this.input = input;
+    public void setAggregateStatus(PortStatusSnapshotDTO aggregateStatus) {
+        this.aggregateStatus = aggregateStatus;
     }
 
-    /**
-     * @return The total count and size of flow files that have been processed in the last five minutes
-     */
-    @ApiModelProperty("The count/size of flowfiles that have been processed in the last 5 minutes.")
-    public String getOutput() {
-        return output;
+    @ApiModelProperty("A status snapshot for each node in the cluster. If the NiFi instance is a standalone instance, rather than "
+        + "a cluster, this may be null.")
+    public List<NodePortStatusSnapshotDTO> getNodeStatuses() {
+        return nodeStatuses;
     }
 
-    public void setOutput(String output) {
-        this.output = output;
-    }
-
-    @ApiModelProperty("The number of FlowFiles that have been accepted in the last 5 minutes.")
-    public Integer getFlowFilesIn() {
-        return flowFilesIn;
-    }
-
-    public void setFlowFilesIn(Integer flowFilesIn) {
-        this.flowFilesIn = flowFilesIn;
-    }
-
-    @ApiModelProperty("The size of hte FlowFiles that have been accepted in the last 5 minutes.")
-    public Long getBytesIn() {
-        return bytesIn;
-    }
-
-    public void setBytesIn(Long bytesIn) {
-        this.bytesIn = bytesIn;
-    }
-
-    @ApiModelProperty("The number of FlowFiles that have been processed in the last 5 minutes.")
-    public Integer getFlowFilesOut() {
-        return flowFilesOut;
-    }
-
-    public void setFlowFilesOut(Integer flowFilesOut) {
-        this.flowFilesOut = flowFilesOut;
-    }
-
-    @ApiModelProperty("The number of bytes that have been processed in the last 5 minutes.")
-    public Long getBytesOut() {
-        return bytesOut;
-    }
-
-    public void setBytesOut(Long bytesOut) {
-        this.bytesOut = bytesOut;
-    }
-
-    @Override
-    public PortStatusDTO clone() {
-        final PortStatusDTO other = new PortStatusDTO();
-        other.setId(getId());
-        other.setGroupId(getGroupId());
-        other.setName(getName());
-        other.setActiveThreadCount(getActiveThreadCount());
-        other.setFlowFilesIn(getFlowFilesIn());
-        other.setBytesIn(getBytesIn());
-        other.setFlowFilesOut(getFlowFilesOut());
-        other.setBytesOut(getBytesOut());
-        other.setTransmitting(isTransmitting());
-        other.setRunStatus(getRunStatus());
-        other.setInput(getInput());
-        other.setOutput(getOutput());
-        other.setBulletins(cloneBulletins());
-
-        return other;
+    public void setNodeStatuses(List<NodePortStatusSnapshotDTO> nodeStatuses) {
+        this.nodeStatuses = nodeStatuses;
     }
 }

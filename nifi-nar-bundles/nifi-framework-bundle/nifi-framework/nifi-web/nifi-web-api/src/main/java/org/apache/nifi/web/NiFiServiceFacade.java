@@ -16,14 +16,18 @@
  */
 package org.apache.nifi.web;
 
+import java.util.Collection;
+import java.util.Date;
+import java.util.Set;
+
 import org.apache.nifi.controller.ScheduledState;
 import org.apache.nifi.controller.repository.claim.ContentDirection;
 import org.apache.nifi.controller.service.ControllerServiceState;
 import org.apache.nifi.web.api.dto.BulletinBoardDTO;
 import org.apache.nifi.web.api.dto.BulletinQueryDTO;
 import org.apache.nifi.web.api.dto.ClusterDTO;
-import org.apache.nifi.web.api.dto.ComponentStateDTO;
 import org.apache.nifi.web.api.dto.ComponentHistoryDTO;
+import org.apache.nifi.web.api.dto.ComponentStateDTO;
 import org.apache.nifi.web.api.dto.ConnectionDTO;
 import org.apache.nifi.web.api.dto.ControllerConfigurationDTO;
 import org.apache.nifi.web.api.dto.ControllerDTO;
@@ -61,20 +65,12 @@ import org.apache.nifi.web.api.dto.provenance.ProvenanceEventDTO;
 import org.apache.nifi.web.api.dto.provenance.ProvenanceOptionsDTO;
 import org.apache.nifi.web.api.dto.provenance.lineage.LineageDTO;
 import org.apache.nifi.web.api.dto.search.SearchResultsDTO;
-import org.apache.nifi.web.api.dto.status.ClusterConnectionStatusDTO;
 import org.apache.nifi.web.api.dto.status.ClusterPortStatusDTO;
-import org.apache.nifi.web.api.dto.status.ClusterProcessGroupStatusDTO;
-import org.apache.nifi.web.api.dto.status.ClusterProcessorStatusDTO;
-import org.apache.nifi.web.api.dto.status.ClusterRemoteProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.ClusterStatusDTO;
 import org.apache.nifi.web.api.dto.status.ControllerStatusDTO;
 import org.apache.nifi.web.api.dto.status.NodeStatusDTO;
 import org.apache.nifi.web.api.dto.status.ProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.StatusHistoryDTO;
-
-import java.util.Collection;
-import java.util.Date;
-import java.util.Set;
 
 /**
  * Defines the NiFiServiceFacade interface.
@@ -1528,41 +1524,6 @@ public interface NiFiServiceFacade {
      * @return The cluster status
      */
     ClusterStatusDTO getClusterStatus();
-
-    /**
-     * Returns a processor's status for each node connected to the cluster.
-     *
-     * @param processorId a processor identifier
-     * @return The cluster processor status transfer object.
-     */
-    ClusterProcessorStatusDTO getClusterProcessorStatus(String processorId);
-
-
-    /**
-     * Returns a connection's status for each node connected to the cluster.
-     *
-     * @param connectionId a connection identifier
-     * @return The cluster connection status transfer object.
-     */
-    ClusterConnectionStatusDTO getClusterConnectionStatus(String connectionId);
-
-
-    /**
-     * Returns a process group's status for each node connected to the cluster.
-     *
-     * @param processorId a process group identifier
-     * @return The cluster process group status transfer object.
-     */
-    ClusterProcessGroupStatusDTO getClusterProcessGroupStatus(String processorId);
-
-
-    /**
-     * Returns a remote process group's status for each node connected to the cluster.
-     *
-     * @param remoteProcessGroupId a remote process group identifier
-     * @return The cluster remote process group status transfer object.
-     */
-    ClusterRemoteProcessGroupStatusDTO getClusterRemoteProcessGroupStatus(String remoteProcessGroupId);
 
     /**
      * Returns an input port's status for each node connected to the cluster.

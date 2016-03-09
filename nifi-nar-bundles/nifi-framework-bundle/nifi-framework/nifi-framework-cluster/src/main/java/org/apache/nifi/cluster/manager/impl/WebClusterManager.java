@@ -224,8 +224,8 @@ import org.apache.nifi.web.api.dto.provenance.ProvenanceResultsDTO;
 import org.apache.nifi.web.api.dto.status.ControllerStatusDTO;
 import org.apache.nifi.web.api.dto.status.NodeStatusSnapshotsDTO;
 import org.apache.nifi.web.api.dto.status.ProcessGroupStatusDTO;
-import org.apache.nifi.web.api.dto.status.RemoteProcessGroupStatusDTO;
-import org.apache.nifi.web.api.dto.status.StatusDTO;
+import org.apache.nifi.web.api.dto.status.ProcessGroupStatusSnapshotDTO;
+import org.apache.nifi.web.api.dto.status.RemoteProcessGroupStatusSnapshotDTO;
 import org.apache.nifi.web.api.dto.status.StatusHistoryDTO;
 import org.apache.nifi.web.api.dto.status.StatusMerger;
 import org.apache.nifi.web.api.dto.status.StatusSnapshotDTO;
@@ -2617,52 +2617,19 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
         componentState.getLocalState().setState(localStateEntries);
     }
 
-    @SuppressWarnings("unchecked")
-    private void updateBulletins(final String nodeAddress, final Collection<? extends StatusDTO>... dtos) {
-        for (final Collection<? extends StatusDTO> collection : dtos) {
-            if (collection != null) {
-                for (final StatusDTO dto : collection) {
-                    final List<BulletinDTO> bulletins = dto.getBulletins();
-                    if (bulletins != null) {
-                        for (final BulletinDTO bulletin : bulletins) {
-                            bulletin.setNodeAddress(nodeAddress);
-                        }
-                    }
-                }
-            }
-        }
-    }
 
-    @SuppressWarnings("unchecked")
-    private void updateBulletins(final ProcessGroupStatusDTO dto, final String nodeAddress) {
-        for (final BulletinDTO bulletin : dto.getBulletins()) {
-            bulletin.setNodeAddress(nodeAddress);
-        }
-
-        updateBulletins(nodeAddress, dto.getProcessorStatus(), dto.getInputPortStatus(), dto.getOutputPortStatus(), dto.getRemoteProcessGroupStatus());
-
-        if (dto.getProcessGroupStatus() != null) {
-            for (final ProcessGroupStatusDTO childGroup : dto.getProcessGroupStatus()) {
-                updateBulletins(childGroup, nodeAddress);
-            }
-        }
-    }
 
     private void mergeGroupStatus(final ProcessGroupStatusDTO statusDto, final Map<NodeIdentifier, ProcessGroupStatusDTO> resultMap) {
         ProcessGroupStatusDTO mergedProcessGroupStatus = statusDto;
         for (final Map.Entry<NodeIdentifier, ProcessGroupStatusDTO> entry : resultMap.entrySet()) {
             final NodeIdentifier nodeId = entry.getKey();
             final ProcessGroupStatusDTO nodeProcessGroupStatus = entry.getValue();
-
-            final String nodeAddress = nodeId.getApiAddress() + ":" + nodeId.getApiPort();
-            updateBulletins(mergedProcessGroupStatus, nodeAddress);
-
             if (nodeProcessGroupStatus == mergedProcessGroupStatus) {
                 continue;
             }
 
-            final ProcessGroupStatusDTO nodeClone = nodeProcessGroupStatus.clone();
-            for (final RemoteProcessGroupStatusDTO remoteProcessGroupStatus : nodeClone.getRemoteProcessGroupStatus()) {
+            final ProcessGroupStatusSnapshotDTO nodeSnapshot = nodeProcessGroupStatus.getAggregateStatus();
+            for (final RemoteProcessGroupStatusSnapshotDTO remoteProcessGroupStatus : nodeSnapshot.getRemoteProcessGroupStatusSnapshots()) {
                 final List<String> nodeAuthorizationIssues = remoteProcessGroupStatus.getAuthorizationIssues();
                 if (!nodeAuthorizationIssues.isEmpty()) {
                     for (final ListIterator<String> iter = nodeAuthorizationIssues.listIterator(); iter.hasNext();) {
@@ -2673,10 +2640,8 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
                 }
             }
 
-            StatusMerger.merge(mergedProcessGroupStatus, nodeClone);
+            StatusMerger.merge(mergedProcessGroupStatus, nodeProcessGroupStatus, nodeId.getId(), nodeId.getApiAddress(), nodeId.getApiPort());
         }
-
-        StatusMerger.updatePrettyPrintedFields(mergedProcessGroupStatus);
     }
 
 

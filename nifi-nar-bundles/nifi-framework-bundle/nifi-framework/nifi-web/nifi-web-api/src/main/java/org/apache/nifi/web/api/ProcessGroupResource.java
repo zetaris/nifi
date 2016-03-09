@@ -51,7 +51,9 @@ import org.apache.nifi.web.api.dto.FlowSnippetDTO;
 import org.apache.nifi.web.api.dto.PositionDTO;
 import org.apache.nifi.web.api.dto.ProcessGroupDTO;
 import org.apache.nifi.web.api.dto.RevisionDTO;
+import org.apache.nifi.web.api.dto.status.NodeProcessGroupStatusSnapshotDTO;
 import org.apache.nifi.web.api.dto.status.ProcessGroupStatusDTO;
+import org.apache.nifi.web.api.dto.status.ProcessGroupStatusSnapshotDTO;
 import org.apache.nifi.web.api.dto.status.StatusHistoryDTO;
 import org.apache.nifi.web.api.entity.FlowSnippetEntity;
 import org.apache.nifi.web.api.entity.ProcessGroupEntity;
@@ -1294,13 +1296,9 @@ public class ProcessGroupResource extends ApplicationResource {
 
         // prune the response as necessary
         if (!recursive) {
-            for (final ProcessGroupStatusDTO childProcessGroupStatus : statusReport.getProcessGroupStatus()) {
-                childProcessGroupStatus.setConnectionStatus(null);
-                childProcessGroupStatus.setProcessGroupStatus(null);
-                childProcessGroupStatus.setInputPortStatus(null);
-                childProcessGroupStatus.setOutputPortStatus(null);
-                childProcessGroupStatus.setProcessorStatus(null);
-                childProcessGroupStatus.setRemoteProcessGroupStatus(null);
+            prune(statusReport.getAggregateStatus());
+            for (final NodeProcessGroupStatusSnapshotDTO nodeSnapshot : statusReport.getNodeStatuses()) {
+                prune(nodeSnapshot.getStatusSnapshot());
             }
         }
 
@@ -1315,6 +1313,15 @@ public class ProcessGroupResource extends ApplicationResource {
 
         // generate the response
         return clusterContext(generateOkResponse(entity)).build();
+    }
+
+    private void prune(final ProcessGroupStatusSnapshotDTO snapshot) {
+        snapshot.setConnectionStatusSnapshots(null);
+        snapshot.setProcessGroupStatusSnapshots(null);
+        snapshot.setInputPortStatusSnapshots(null);
+        snapshot.setOutputPortStatusSnapshots(null);
+        snapshot.setProcessorStatusSnapshots(null);
+        snapshot.setRemoteProcessGroupStatusSnapshots(null);
     }
 
     /**

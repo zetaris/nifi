@@ -16,7 +16,29 @@
  */
 package org.apache.nifi.web.api.dto;
 
-import org.apache.commons.lang3.StringUtils;
+import java.text.Collator;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.concurrent.TimeUnit;
+
+import javax.ws.rs.WebApplicationException;
+
 import org.apache.nifi.action.Action;
 import org.apache.nifi.action.component.details.ComponentDetails;
 import org.apache.nifi.action.component.details.ExtensionDetails;
@@ -122,34 +144,16 @@ import org.apache.nifi.web.api.dto.provenance.lineage.LineageResultsDTO;
 import org.apache.nifi.web.api.dto.provenance.lineage.ProvenanceLinkDTO;
 import org.apache.nifi.web.api.dto.provenance.lineage.ProvenanceNodeDTO;
 import org.apache.nifi.web.api.dto.status.ConnectionStatusDTO;
+import org.apache.nifi.web.api.dto.status.ConnectionStatusSnapshotDTO;
 import org.apache.nifi.web.api.dto.status.PortStatusDTO;
+import org.apache.nifi.web.api.dto.status.PortStatusSnapshotDTO;
 import org.apache.nifi.web.api.dto.status.ProcessGroupStatusDTO;
+import org.apache.nifi.web.api.dto.status.ProcessGroupStatusSnapshotDTO;
 import org.apache.nifi.web.api.dto.status.ProcessorStatusDTO;
+import org.apache.nifi.web.api.dto.status.ProcessorStatusSnapshotDTO;
 import org.apache.nifi.web.api.dto.status.RemoteProcessGroupStatusDTO;
-import org.apache.nifi.web.api.dto.status.StatusDTO;
+import org.apache.nifi.web.api.dto.status.RemoteProcessGroupStatusSnapshotDTO;
 import org.apache.nifi.web.api.dto.status.StatusMerger;
-
-import javax.ws.rs.WebApplicationException;
-import java.text.Collator;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
-import java.util.concurrent.TimeUnit;
 
 public final class DtoFactory {
 
@@ -717,175 +721,108 @@ public final class DtoFactory {
         dto.setTargetUri(remoteProcessGroupStatus.getTargetUri());
         dto.setName(remoteProcessGroupStatus.getName());
         dto.setTransmissionStatus(remoteProcessGroupStatus.getTransmissionStatus().toString());
-        dto.setActiveThreadCount(remoteProcessGroupStatus.getActiveThreadCount());
-        dto.setFlowFilesSent(remoteProcessGroupStatus.getSentCount());
-        dto.setBytesSent(remoteProcessGroupStatus.getSentContentSize());
-        dto.setFlowFilesReceived(remoteProcessGroupStatus.getReceivedCount());
-        dto.setBytesReceived(remoteProcessGroupStatus.getReceivedContentSize());
-        dto.setAuthorizationIssues(remoteProcessGroupStatus.getAuthorizationIssues());
 
-        StatusMerger.updatePrettyPrintedFields(dto);
+        final RemoteProcessGroupStatusSnapshotDTO snapshot = new RemoteProcessGroupStatusSnapshotDTO();
+        dto.setAggregateStatus(snapshot);
+
+        snapshot.setActiveThreadCount(remoteProcessGroupStatus.getActiveThreadCount());
+        snapshot.setFlowFilesSent(remoteProcessGroupStatus.getSentCount());
+        snapshot.setBytesSent(remoteProcessGroupStatus.getSentContentSize());
+        snapshot.setFlowFilesReceived(remoteProcessGroupStatus.getReceivedCount());
+        snapshot.setBytesReceived(remoteProcessGroupStatus.getReceivedContentSize());
+        snapshot.setAuthorizationIssues(remoteProcessGroupStatus.getAuthorizationIssues());
+
+        StatusMerger.updatePrettyPrintedFields(snapshot);
         return dto;
     }
 
     public ProcessGroupStatusDTO createProcessGroupStatusDto(final BulletinRepository bulletinRepository, final ProcessGroupStatus processGroupStatus) {
-
         final ProcessGroupStatusDTO processGroupStatusDto = new ProcessGroupStatusDTO();
         processGroupStatusDto.setId(processGroupStatus.getId());
         processGroupStatusDto.setName(processGroupStatus.getName());
-        processGroupStatusDto.setStatsLastRefreshed(new Date(processGroupStatus.getCreationTimestamp()));
-        processGroupStatusDto.setBytesRead(processGroupStatus.getBytesRead());
-        processGroupStatusDto.setBytesWritten(processGroupStatus.getBytesWritten());
-        processGroupStatusDto.setFlowFilesIn(processGroupStatus.getInputCount());
-        processGroupStatusDto.setBytesIn(processGroupStatus.getInputContentSize());
-        processGroupStatusDto.setFlowFilesOut(processGroupStatus.getOutputCount());
-        processGroupStatusDto.setBytesOut(processGroupStatus.getOutputContentSize());
-        processGroupStatusDto.setFlowFilesTransferred(processGroupStatus.getFlowFilesTransferred());
-        processGroupStatusDto.setBytesTransferred(processGroupStatus.getBytesTransferred());
-        processGroupStatusDto.setFlowFilesSent(processGroupStatus.getFlowFilesSent());
-        processGroupStatusDto.setBytesSent(processGroupStatus.getBytesSent());
-        processGroupStatusDto.setFlowFilesReceived(processGroupStatus.getFlowFilesReceived());
-        processGroupStatusDto.setBytesReceived(processGroupStatus.getBytesReceived());
-        processGroupStatusDto.setActiveThreadCount(processGroupStatus.getActiveThreadCount());
-        StatusMerger.updatePrettyPrintedFields(processGroupStatusDto);
 
-        final Map<String, StatusDTO> componentStatusDtoMap = new HashMap<>();
+        final ProcessGroupStatusSnapshotDTO snapshot = new ProcessGroupStatusSnapshotDTO();
+        processGroupStatusDto.setAggregateStatus(snapshot);
+
+        snapshot.setStatsLastRefreshed(new Date(processGroupStatus.getCreationTimestamp()));
+        snapshot.setBytesRead(processGroupStatus.getBytesRead());
+        snapshot.setBytesWritten(processGroupStatus.getBytesWritten());
+        snapshot.setFlowFilesIn(processGroupStatus.getInputCount());
+        snapshot.setBytesIn(processGroupStatus.getInputContentSize());
+        snapshot.setFlowFilesOut(processGroupStatus.getOutputCount());
+        snapshot.setBytesOut(processGroupStatus.getOutputContentSize());
+        snapshot.setFlowFilesTransferred(processGroupStatus.getFlowFilesTransferred());
+        snapshot.setBytesTransferred(processGroupStatus.getBytesTransferred());
+        snapshot.setFlowFilesSent(processGroupStatus.getFlowFilesSent());
+        snapshot.setBytesSent(processGroupStatus.getBytesSent());
+        snapshot.setFlowFilesReceived(processGroupStatus.getFlowFilesReceived());
+        snapshot.setBytesReceived(processGroupStatus.getBytesReceived());
+        snapshot.setActiveThreadCount(processGroupStatus.getActiveThreadCount());
+        StatusMerger.updatePrettyPrintedFields(snapshot);
 
         // processor status
-        final Collection<ProcessorStatusDTO> processorStatDtoCollection = new ArrayList<>();
-        processGroupStatusDto.setProcessorStatus(processorStatDtoCollection);
+        final Collection<ProcessorStatusSnapshotDTO> processorStatDtoCollection = new ArrayList<>();
+        snapshot.setProcessorStatusSnapshots(processorStatDtoCollection);
         final Collection<ProcessorStatus> processorStatusCollection = processGroupStatus.getProcessorStatus();
         if (processorStatusCollection != null) {
             for (final ProcessorStatus processorStatus : processorStatusCollection) {
                 final ProcessorStatusDTO processorStatusDto = createProcessorStatusDto(processorStatus);
-                processorStatDtoCollection.add(processorStatusDto);
-                componentStatusDtoMap.put(processorStatusDto.getId(), processorStatusDto);
+                processorStatDtoCollection.add(processorStatusDto.getAggregateStatus());
             }
         }
 
         // connection status
-        final Collection<ConnectionStatusDTO> connectionStatusDtoCollection = new ArrayList<>();
-        processGroupStatusDto.setConnectionStatus(connectionStatusDtoCollection);
+        final Collection<ConnectionStatusSnapshotDTO> connectionStatusDtoCollection = new ArrayList<>();
+        snapshot.setConnectionStatusSnapshots(connectionStatusDtoCollection);
         final Collection<ConnectionStatus> connectionStatusCollection = processGroupStatus.getConnectionStatus();
         if (connectionStatusCollection != null) {
             for (final ConnectionStatus connectionStatus : connectionStatusCollection) {
                 final ConnectionStatusDTO connectionStatusDto = createConnectionStatusDto(connectionStatus);
-                connectionStatusDtoCollection.add(connectionStatusDto);
+                connectionStatusDtoCollection.add(connectionStatusDto.getAggregateSnapshot());
             }
         }
 
         // local child process groups
-        final Collection<ProcessGroupStatusDTO> childProcessGroupStatusDtoCollection = new ArrayList<>();
-        processGroupStatusDto.setProcessGroupStatus(childProcessGroupStatusDtoCollection);
+        final Collection<ProcessGroupStatusSnapshotDTO> childProcessGroupStatusDtoCollection = new ArrayList<>();
+        snapshot.setProcessGroupStatusSnapshots(childProcessGroupStatusDtoCollection);
         final Collection<ProcessGroupStatus> childProcessGroupStatusCollection = processGroupStatus.getProcessGroupStatus();
         if (childProcessGroupStatusCollection != null) {
             for (final ProcessGroupStatus childProcessGroupStatus : childProcessGroupStatusCollection) {
                 final ProcessGroupStatusDTO childProcessGroupStatusDto = createProcessGroupStatusDto(bulletinRepository, childProcessGroupStatus);
-                childProcessGroupStatusDtoCollection.add(childProcessGroupStatusDto);
+                childProcessGroupStatusDtoCollection.add(childProcessGroupStatusDto.getAggregateStatus());
             }
         }
 
         // remote child process groups
-        final Collection<RemoteProcessGroupStatusDTO> childRemoteProcessGroupStatusDtoCollection = new ArrayList<>();
-        processGroupStatusDto.setRemoteProcessGroupStatus(childRemoteProcessGroupStatusDtoCollection);
+        final Collection<RemoteProcessGroupStatusSnapshotDTO> childRemoteProcessGroupStatusDtoCollection = new ArrayList<>();
+        snapshot.setRemoteProcessGroupStatusSnapshots(childRemoteProcessGroupStatusDtoCollection);
         final Collection<RemoteProcessGroupStatus> childRemoteProcessGroupStatusCollection = processGroupStatus.getRemoteProcessGroupStatus();
         if (childRemoteProcessGroupStatusCollection != null) {
             for (final RemoteProcessGroupStatus childRemoteProcessGroupStatus : childRemoteProcessGroupStatusCollection) {
                 final RemoteProcessGroupStatusDTO childRemoteProcessGroupStatusDto = createRemoteProcessGroupStatusDto(childRemoteProcessGroupStatus);
-                childRemoteProcessGroupStatusDtoCollection.add(childRemoteProcessGroupStatusDto);
-                componentStatusDtoMap.put(childRemoteProcessGroupStatusDto.getId(), childRemoteProcessGroupStatusDto);
+                childRemoteProcessGroupStatusDtoCollection.add(childRemoteProcessGroupStatusDto.getAggregateStatus());
             }
         }
 
         // input ports
-        final Collection<PortStatusDTO> inputPortStatusDtoCollection = new ArrayList<>();
-        processGroupStatusDto.setInputPortStatus(inputPortStatusDtoCollection);
+        final Collection<PortStatusSnapshotDTO> inputPortStatusDtoCollection = new ArrayList<>();
+        snapshot.setInputPortStatusSnapshots(inputPortStatusDtoCollection);
         final Collection<PortStatus> inputPortStatusCollection = processGroupStatus.getInputPortStatus();
         if (inputPortStatusCollection != null) {
             for (final PortStatus portStatus : inputPortStatusCollection) {
                 final PortStatusDTO portStatusDto = createPortStatusDto(portStatus);
-                inputPortStatusDtoCollection.add(portStatusDto);
-                componentStatusDtoMap.put(portStatusDto.getId(), portStatusDto);
+                inputPortStatusDtoCollection.add(portStatusDto.getAggregateStatus());
             }
         }
 
         // output ports
-        final Collection<PortStatusDTO> outputPortStatusDtoCollection = new ArrayList<>();
-        processGroupStatusDto.setOutputPortStatus(outputPortStatusDtoCollection);
+        final Collection<PortStatusSnapshotDTO> outputPortStatusDtoCollection = new ArrayList<>();
+        snapshot.setOutputPortStatusSnapshots(outputPortStatusDtoCollection);
         final Collection<PortStatus> outputPortStatusCollection = processGroupStatus.getOutputPortStatus();
         if (outputPortStatusCollection != null) {
             for (final PortStatus portStatus : outputPortStatusCollection) {
                 final PortStatusDTO portStatusDto = createPortStatusDto(portStatus);
-                outputPortStatusDtoCollection.add(portStatusDto);
-                componentStatusDtoMap.put(portStatusDto.getId(), portStatusDto);
-            }
-        }
-
-        // get the bulletins for this group and associate with the specific child component
-        if (bulletinRepository != null) {
-            if (processGroupStatusDto.getBulletins() == null) {
-                processGroupStatusDto.setBulletins(new ArrayList<BulletinDTO>());
-            }
-
-            // locate bulletins for this process group
-            final List<Bulletin> results = bulletinRepository.findBulletinsForGroupBySource(processGroupStatus.getId(), MAX_BULLETINS_PER_COMPONENT);
-            for (final Bulletin bulletin : results) {
-                final StatusDTO status = componentStatusDtoMap.get(bulletin.getSourceId());
-
-                // ensure this connectable is still in the flow
-                if (status != null) {
-                    if (status.getBulletins() == null) {
-                        status.setBulletins(new ArrayList<BulletinDTO>());
-                    }
-
-                    // convert the result into a dto
-                    final BulletinDTO bulletinDto = createBulletinDto(bulletin);
-                    status.getBulletins().add(bulletinDto);
-
-                    // create a copy for the parent group
-                    final BulletinDTO copy = copy(bulletinDto);
-                    copy.setGroupId(StringUtils.EMPTY);
-                    copy.setSourceId(processGroupStatus.getId());
-                    copy.setSourceName(processGroupStatus.getName());
-                    processGroupStatusDto.getBulletins().add(copy);
-                }
-            }
-
-            // copy over descendant bulletins
-            for (final ProcessGroupStatusDTO childProcessGroupStatusDto : processGroupStatusDto.getProcessGroupStatus()) {
-                if (childProcessGroupStatusDto.getBulletins() != null) {
-                    for (final BulletinDTO descendantBulletinDto : childProcessGroupStatusDto.getBulletins()) {
-                        // create a copy for the parent group
-                        final BulletinDTO copy = copy(descendantBulletinDto);
-                        copy.setGroupId(StringUtils.EMPTY);
-                        copy.setSourceId(processGroupStatus.getId());
-                        copy.setSourceName(processGroupStatus.getName());
-                        processGroupStatusDto.getBulletins().add(copy);
-                    }
-                }
-            }
-
-            // sort the bulletins
-            Collections.sort(processGroupStatusDto.getBulletins(), new Comparator<BulletinDTO>() {
-                @Override
-                public int compare(BulletinDTO o1, BulletinDTO o2) {
-                    if (o1 == null && o2 == null) {
-                        return 0;
-                    }
-                    if (o1 == null) {
-                        return 1;
-                    }
-                    if (o2 == null) {
-                        return -1;
-                    }
-
-                    return -Long.compare(o1.getId(), o2.getId());
-                }
-            });
-
-            // prune the response to only include the max number of bulletins
-            if (processGroupStatusDto.getBulletins().size() > MAX_BULLETINS_PER_COMPONENT) {
-                processGroupStatusDto.setBulletins(processGroupStatusDto.getBulletins().subList(0, MAX_BULLETINS_PER_COMPONENT));
+                outputPortStatusDtoCollection.add(portStatusDto.getAggregateStatus());
             }
         }
 
@@ -902,15 +839,18 @@ public final class DtoFactory {
         connectionStatusDto.setDestinationId(connectionStatus.getDestinationId());
         connectionStatusDto.setDestinationName(connectionStatus.getDestinationName());
 
-        connectionStatusDto.setFlowFilesQueued(connectionStatus.getQueuedCount());
-        connectionStatusDto.setBytesQueued(connectionStatus.getQueuedBytes());
+        final ConnectionStatusSnapshotDTO snapshot = new ConnectionStatusSnapshotDTO();
+        connectionStatusDto.setAggregateSnapshot(snapshot);
 
-        connectionStatusDto.setFlowFilesIn(connectionStatus.getInputCount());
-        connectionStatusDto.setBytesIn(connectionStatus.getInputBytes());
+        snapshot.setFlowFilesQueued(connectionStatus.getQueuedCount());
+        snapshot.setBytesQueued(connectionStatus.getQueuedBytes());
 
-        connectionStatusDto.setFlowFilesOut(connectionStatus.getOutputCount());
-        connectionStatusDto.setBytesOut(connectionStatus.getOutputBytes());
-        StatusMerger.updatePrettyPrintedFields(connectionStatusDto);
+        snapshot.setFlowFilesIn(connectionStatus.getInputCount());
+        snapshot.setBytesIn(connectionStatus.getInputBytes());
+
+        snapshot.setFlowFilesOut(connectionStatus.getOutputCount());
+        snapshot.setBytesOut(connectionStatus.getOutputBytes());
+        StatusMerger.updatePrettyPrintedFields(snapshot);
 
         return connectionStatusDto;
     }
@@ -919,27 +859,30 @@ public final class DtoFactory {
         final ProcessorStatusDTO dto = new ProcessorStatusDTO();
         dto.setId(procStatus.getId());
         dto.setGroupId(procStatus.getGroupId());
-        dto.setName(procStatus.getName());
+        dto.setProcessorName(procStatus.getName());
 
-        dto.setFlowFilesOut(procStatus.getOutputCount());
-        dto.setBytesOut(procStatus.getOutputBytes());
+        final ProcessorStatusSnapshotDTO snapshot = new ProcessorStatusSnapshotDTO();
+        dto.setAggregateStatus(snapshot);
 
-        dto.setFlowFilesIn(procStatus.getInputCount());
-        dto.setBytesIn(procStatus.getInputBytes());
+        snapshot.setFlowFilesOut(procStatus.getOutputCount());
+        snapshot.setBytesOut(procStatus.getOutputBytes());
 
-        dto.setBytesRead(procStatus.getBytesRead());
-        dto.setBytesWritten(procStatus.getBytesWritten());
+        snapshot.setFlowFilesIn(procStatus.getInputCount());
+        snapshot.setBytesIn(procStatus.getInputBytes());
 
-        dto.setTaskCount(procStatus.getInvocations());
-        dto.setTaskDuration(procStatus.getProcessingNanos());
+        snapshot.setBytesRead(procStatus.getBytesRead());
+        snapshot.setBytesWritten(procStatus.getBytesWritten());
+
+        snapshot.setTaskCount(procStatus.getInvocations());
+        snapshot.setTaskDuration(procStatus.getProcessingNanos());
 
         // determine the run status
-        dto.setRunStatus(procStatus.getRunStatus().toString());
+        snapshot.setRunStatus(procStatus.getRunStatus().toString());
 
-        dto.setActiveThreadCount(procStatus.getActiveThreadCount());
-        dto.setType(procStatus.getType());
+        snapshot.setActiveThreadCount(procStatus.getActiveThreadCount());
+        snapshot.setType(procStatus.getType());
 
-        StatusMerger.updatePrettyPrintedFields(dto);
+        StatusMerger.updatePrettyPrintedFields(snapshot);
         return dto;
     }
 
@@ -954,16 +897,19 @@ public final class DtoFactory {
         dto.setId(portStatus.getId());
         dto.setGroupId(portStatus.getGroupId());
         dto.setName(portStatus.getName());
-        dto.setActiveThreadCount(portStatus.getActiveThreadCount());
         dto.setRunStatus(portStatus.getRunStatus().toString());
         dto.setTransmitting(portStatus.isTransmitting());
 
-        dto.setFlowFilesOut(portStatus.getOutputCount());
-        dto.setBytesOut(portStatus.getOutputBytes());
+        final PortStatusSnapshotDTO snapshot = new PortStatusSnapshotDTO();
+        dto.setAggregateStatus(snapshot);
 
-        dto.setFlowFilesIn(portStatus.getInputCount());
-        dto.setBytesIn(portStatus.getInputBytes());
-        StatusMerger.updatePrettyPrintedFields(dto);
+        snapshot.setActiveThreadCount(portStatus.getActiveThreadCount());
+        snapshot.setFlowFilesOut(portStatus.getOutputCount());
+        snapshot.setBytesOut(portStatus.getOutputBytes());
+
+        snapshot.setFlowFilesIn(portStatus.getInputCount());
+        snapshot.setBytesIn(portStatus.getInputBytes());
+        StatusMerger.updatePrettyPrintedFields(snapshot);
 
         return dto;
     }
