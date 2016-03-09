@@ -89,8 +89,12 @@ import org.apache.nifi.web.api.dto.provenance.lineage.LineageRequestDTO;
 import org.apache.nifi.web.api.dto.provenance.lineage.LineageRequestDTO.LineageRequestType;
 import org.apache.nifi.web.api.dto.search.ComponentSearchResultDTO;
 import org.apache.nifi.web.api.dto.search.SearchResultsDTO;
+import org.apache.nifi.web.api.dto.status.ConnectionStatusDTO;
 import org.apache.nifi.web.api.dto.status.ControllerStatusDTO;
+import org.apache.nifi.web.api.dto.status.PortStatusDTO;
 import org.apache.nifi.web.api.dto.status.ProcessGroupStatusDTO;
+import org.apache.nifi.web.api.dto.status.ProcessorStatusDTO;
+import org.apache.nifi.web.api.dto.status.RemoteProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.StatusHistoryDTO;
 import org.apache.nifi.web.security.ProxiedEntitiesUtils;
 import org.apache.nifi.web.security.user.NiFiUserUtils;
@@ -476,6 +480,66 @@ public class ControllerFacade {
             throw new ResourceNotFoundException(String.format("Unable to locate group with id '%s'.", groupId));
         }
         return dtoFactory.createProcessGroupStatusDto(flowController.getBulletinRepository(), processGroupStatus);
+    }
+
+    /**
+     * Gets the status for the specified processor.
+     *
+     * @param groupId group id
+     * @param processorId processor id
+     * @return the status for the specified processor
+     */
+    public ProcessorStatusDTO getProcessorStatus(final String groupId, final String processorId) {
+        // TODO
+        return null;
+    }
+
+    /**
+     * Gets the status for the specified connection.
+     *
+     * @param groupId group id
+     * @param connectionId connection id
+     * @return the status for the specified connection
+     */
+    public ConnectionStatusDTO getConnectionStatus(final String groupId, final String connectionId) {
+        // TODO
+        return null;
+    }
+
+    /**
+     * Gets the status for the specified input port.
+     *
+     * @param groupId group id
+     * @param portId input port id
+     * @return the status for the specified input port
+     */
+    public PortStatusDTO getInputPortStatus(final String groupId, final String portId) {
+        // TODO
+        return null;
+    }
+
+    /**
+     * Gets the status for the specified output port.
+     *
+     * @param groupId group id
+     * @param portId output port id
+     * @return the status for the specified output port
+     */
+    public PortStatusDTO getOutputPortStatus(final String groupId, final String portId) {
+        // TODO
+        return null;
+    }
+
+    /**
+     * Gets the status for the specified remote process group.
+     *
+     * @param groupId group id
+     * @param remoteProcessGroupId remote process group id
+     * @return the status for the specified remote process group
+     */
+    public RemoteProcessGroupStatusDTO getRemoteProcessGroupStatus(final String groupId, final String remoteProcessGroupId) {
+        // TODO
+        return null;
     }
 
     /**

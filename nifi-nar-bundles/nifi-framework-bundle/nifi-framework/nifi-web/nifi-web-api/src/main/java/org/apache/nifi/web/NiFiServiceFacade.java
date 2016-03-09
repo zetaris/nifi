@@ -67,9 +67,13 @@ import org.apache.nifi.web.api.dto.provenance.lineage.LineageDTO;
 import org.apache.nifi.web.api.dto.search.SearchResultsDTO;
 import org.apache.nifi.web.api.dto.status.ClusterPortStatusDTO;
 import org.apache.nifi.web.api.dto.status.ClusterStatusDTO;
+import org.apache.nifi.web.api.dto.status.ConnectionStatusDTO;
 import org.apache.nifi.web.api.dto.status.ControllerStatusDTO;
 import org.apache.nifi.web.api.dto.status.NodeStatusDTO;
+import org.apache.nifi.web.api.dto.status.PortStatusDTO;
 import org.apache.nifi.web.api.dto.status.ProcessGroupStatusDTO;
+import org.apache.nifi.web.api.dto.status.ProcessorStatusDTO;
+import org.apache.nifi.web.api.dto.status.RemoteProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.StatusHistoryDTO;
 
 /**
@@ -383,6 +387,15 @@ public interface NiFiServiceFacade {
     ProcessorDTO getProcessor(String id);
 
     /**
+     * Gets the processor status.
+     *
+     * @param groupId group
+     * @param id id
+     * @return status
+     */
+    ProcessorStatusDTO getProcessorStatus(String groupId, String id);
+
+    /**
      * Gets the processor status history.
      *
      * @param groupId group
@@ -471,6 +484,15 @@ public interface NiFiServiceFacade {
      * @return The Connection transfer object
      */
     ConnectionDTO getConnection(String groupId, String connectionId);
+
+    /**
+     * Gets the status of the specified connection.
+     *
+     * @param groupId group
+     * @param connectionId connection
+     * @return status
+     */
+    ConnectionStatusDTO getConnectionStatus(String groupId, String connectionId);
 
     /**
      * Gets the status history of the specified connection.
@@ -644,6 +666,15 @@ public interface NiFiServiceFacade {
     Set<PortDTO> getInputPorts(String groupId);
 
     /**
+     * Gets the input port status.
+     *
+     * @param groupId group
+     * @param inputPortId input port
+     * @return status
+     */
+    PortStatusDTO getInputPortStatus(String groupId, String inputPortId);
+
+    /**
      * Determines if the input port could be updated.
      *
      * @param groupId The id of the group
@@ -708,6 +739,15 @@ public interface NiFiServiceFacade {
      * @return ports
      */
     Set<PortDTO> getOutputPorts(String groupId);
+
+    /**
+     * Gets the output port status.
+     *
+     * @param groupId group
+     * @param outputPortId output port
+     * @return status
+     */
+    PortStatusDTO getOutputPortStatus(String groupId, String outputPortId);
 
     /**
      * Determines if the output port could be updated.
@@ -844,6 +884,15 @@ public interface NiFiServiceFacade {
      * @return group
      */
     Set<RemoteProcessGroupDTO> getRemoteProcessGroups(String groupId);
+
+    /**
+     * Gets the remote process group status.
+     *
+     * @param groupId group
+     * @param id remote process group
+     * @return status
+     */
+    RemoteProcessGroupStatusDTO getRemoteProcessGroupStatus(String groupId, String id);
 
     /**
      * Gets the remote process group status history.
