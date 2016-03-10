@@ -143,11 +143,14 @@ import org.apache.nifi.web.api.dto.provenance.lineage.LineageDTO;
 import org.apache.nifi.web.api.dto.search.SearchResultsDTO;
 import org.apache.nifi.web.api.dto.status.ClusterPortStatusDTO;
 import org.apache.nifi.web.api.dto.status.ClusterStatusDTO;
+import org.apache.nifi.web.api.dto.status.ConnectionStatusDTO;
 import org.apache.nifi.web.api.dto.status.ControllerStatusDTO;
 import org.apache.nifi.web.api.dto.status.NodePortStatusDTO;
 import org.apache.nifi.web.api.dto.status.NodeStatusDTO;
+import org.apache.nifi.web.api.dto.status.PortStatusDTO;
 import org.apache.nifi.web.api.dto.status.ProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.ProcessorStatusDTO;
+import org.apache.nifi.web.api.dto.status.RemoteProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.StatusHistoryDTO;
 import org.apache.nifi.web.controller.ControllerFacade;
 import org.apache.nifi.web.dao.ConnectionDAO;
@@ -383,7 +386,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
 
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<ConnectionDTO>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -414,7 +417,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<ProcessorDTO>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -445,7 +448,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save updated controller
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<LabelDTO>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -476,7 +479,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save updated controller
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<FunnelDTO>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -522,7 +525,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                     controllerFacade.save();
                 }
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<SnippetDTO>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -552,7 +555,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save updated controller
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<PortDTO>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -582,7 +585,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save updated controller
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<PortDTO>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -612,7 +615,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save updated controller
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<RemoteProcessGroupDTO>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -639,7 +642,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save updated controller
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<RemoteProcessGroupPortDTO>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -666,7 +669,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save updated controller
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<RemoteProcessGroupPortDTO>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -701,7 +704,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save updated controller
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<ProcessGroupDTO>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -741,7 +744,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<ControllerConfigurationDTO>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -798,14 +801,14 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // clear the state for the specified component
                 processorDAO.clearState(groupId, processorId);
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<Void>() {
                     @Override
                     public boolean isNew() {
                         return false;
                     }
 
                     @Override
-                    public ControllerConfigurationDTO getConfiguration() {
+                    public Void getConfiguration() {
                         return null;
                     }
                 };
@@ -826,14 +829,14 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // clear the state for the specified component
                 controllerServiceDAO.clearState(controllerServiceId);
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<Void>() {
                     @Override
                     public boolean isNew() {
                         return false;
                     }
 
                     @Override
-                    public ControllerConfigurationDTO getConfiguration() {
+                    public Void getConfiguration() {
                         return null;
                     }
                 };
@@ -854,14 +857,14 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // clear the state for the specified component
                 reportingTaskDAO.clearState(reportingTaskId);
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<Void>() {
                     @Override
                     public boolean isNew() {
                         return false;
                     }
 
                     @Override
-                    public ControllerConfigurationDTO getConfiguration() {
+                    public Void getConfiguration() {
                         return null;
                     }
                 };
@@ -879,14 +882,14 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<Void>() {
                     @Override
                     public boolean isNew() {
                         return false;
                     }
 
                     @Override
-                    public ControllerConfigurationDTO getConfiguration() {
+                    public Void getConfiguration() {
                         return null;
                     }
                 };
@@ -926,14 +929,14 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<Void>() {
                     @Override
                     public boolean isNew() {
                         return false;
                     }
 
                     @Override
-                    public ControllerConfigurationDTO getConfiguration() {
+                    public Void getConfiguration() {
                         return null;
                     }
                 };
@@ -952,14 +955,14 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<Void>() {
                     @Override
                     public boolean isNew() {
                         return false;
                     }
 
                     @Override
-                    public ControllerConfigurationDTO getConfiguration() {
+                    public Void getConfiguration() {
                         return null;
                     }
                 };
@@ -978,14 +981,14 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<Void>() {
                     @Override
                     public boolean isNew() {
                         return false;
                     }
 
                     @Override
-                    public ControllerConfigurationDTO getConfiguration() {
+                    public Void getConfiguration() {
                         return null;
                     }
                 };
@@ -1015,14 +1018,14 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                     controllerFacade.save();
                 }
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<Void>() {
                     @Override
                     public boolean isNew() {
                         return false;
                     }
 
                     @Override
-                    public ControllerConfigurationDTO getConfiguration() {
+                    public Void getConfiguration() {
                         return null;
                     }
                 };
@@ -1040,14 +1043,14 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<Void>() {
                     @Override
                     public boolean isNew() {
                         return false;
                     }
 
                     @Override
-                    public ControllerConfigurationDTO getConfiguration() {
+                    public Void getConfiguration() {
                         return null;
                     }
                 };
@@ -1065,14 +1068,14 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<Void>() {
                     @Override
                     public boolean isNew() {
                         return false;
                     }
 
                     @Override
-                    public ControllerConfigurationDTO getConfiguration() {
+                    public Void getConfiguration() {
                         return null;
                     }
                 };
@@ -1090,14 +1093,14 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<Void>() {
                     @Override
                     public boolean isNew() {
                         return false;
                     }
 
                     @Override
-                    public ControllerConfigurationDTO getConfiguration() {
+                    public Void getConfiguration() {
                         return null;
                     }
                 };
@@ -1115,14 +1118,14 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<Void>() {
                     @Override
                     public boolean isNew() {
                         return false;
                     }
 
                     @Override
-                    public ControllerConfigurationDTO getConfiguration() {
+                    public Void getConfiguration() {
                         return null;
                     }
                 };
@@ -1151,7 +1154,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<ConnectionDTO>() {
                     @Override
                     public boolean isNew() {
                         return true;
@@ -1203,7 +1206,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<ProcessorDTO>() {
                     @Override
                     public boolean isNew() {
                         return true;
@@ -1234,7 +1237,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<LabelDTO>() {
                     @Override
                     public boolean isNew() {
                         return true;
@@ -1265,7 +1268,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<FunnelDTO>() {
                     @Override
                     public boolean isNew() {
                         return true;
@@ -1356,7 +1359,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<FlowSnippetDTO>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -1386,7 +1389,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 final SnippetDTO responseSnippetDTO = dtoFactory.createSnippetDto(snippet);
                 responseSnippetDTO.setContents(snippetUtils.populateFlowSnippet(snippet, false, false));
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<SnippetDTO>() {
                     @Override
                     public boolean isNew() {
                         return true;
@@ -1416,7 +1419,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<PortDTO>() {
                     @Override
                     public boolean isNew() {
                         return true;
@@ -1446,7 +1449,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<PortDTO>() {
                     @Override
                     public boolean isNew() {
                         return true;
@@ -1476,7 +1479,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<ProcessGroupDTO>() {
                     @Override
                     public boolean isNew() {
                         return true;
@@ -1506,7 +1509,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<RemoteProcessGroupDTO>() {
                     @Override
                     public boolean isNew() {
                         return true;
@@ -1578,7 +1581,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<FlowSnippetDTO>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -1601,14 +1604,14 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // create the archive
                 controllerFacade.createArchive();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<Void>() {
                     @Override
                     public boolean isNew() {
                         return false;
                     }
 
                     @Override
-                    public ControllerConfigurationDTO getConfiguration() {
+                    public Void getConfiguration() {
                         return null;
                     }
                 };
@@ -1644,7 +1647,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // save the flow
                 controllerFacade.save();
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<ProcessorDTO>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -1679,7 +1682,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                     controllerFacade.save();
                 }
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<ControllerServiceDTO>() {
                     @Override
                     public boolean isNew() {
                         return true;
@@ -1713,7 +1716,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                     controllerFacade.save();
                 }
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<ControllerServiceDTO>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -1740,7 +1743,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
             public ConfigurationResult<Set<ControllerServiceReferencingComponentDTO>> execute() {
                 final ControllerServiceReference reference = controllerServiceDAO.updateControllerServiceReferencingComponents(controllerServiceId, scheduledState, controllerServiceState);
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<Set<ControllerServiceReferencingComponentDTO>>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -1770,14 +1773,14 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                     controllerFacade.save();
                 }
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<Void>() {
                     @Override
                     public boolean isNew() {
                         return false;
                     }
 
                     @Override
-                    public ControllerConfigurationDTO getConfiguration() {
+                    public Void getConfiguration() {
                         return null;
                     }
                 };
@@ -1805,7 +1808,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                     controllerFacade.save();
                 }
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<ReportingTaskDTO>() {
                     @Override
                     public boolean isNew() {
                         return true;
@@ -1839,7 +1842,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                     controllerFacade.save();
                 }
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<ReportingTaskDTO>() {
                     @Override
                     public boolean isNew() {
                         return false;
@@ -1869,14 +1872,14 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                     controllerFacade.save();
                 }
 
-                return new ConfigurationResult() {
+                return new ConfigurationResult<Void>() {
                     @Override
                     public boolean isNew() {
                         return false;
                     }
 
                     @Override
-                    public ControllerConfigurationDTO getConfiguration() {
+                    public Void getConfiguration() {
                         return null;
                     }
                 };
@@ -2233,6 +2236,11 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
     }
 
     @Override
+    public ConnectionStatusDTO getConnectionStatus(String groupId, String connectionId) {
+        return controllerFacade.getConnectionStatus(groupId, connectionId);
+    }
+
+    @Override
     public StatusHistoryDTO getConnectionStatusHistory(String groupId, String connectionId) {
         return controllerFacade.getConnectionStatusHistory(groupId, connectionId);
     }
@@ -2581,13 +2589,28 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
     }
 
     @Override
+    public PortStatusDTO getInputPortStatus(String groupId, String inputPortId) {
+        return controllerFacade.getInputPortStatus(groupId, inputPortId);
+    }
+
+    @Override
     public PortDTO getOutputPort(String groupId, String outputPortId) {
         return dtoFactory.createPortDto(outputPortDAO.getPort(groupId, outputPortId));
     }
 
     @Override
+    public PortStatusDTO getOutputPortStatus(String groupId, String outputPortId) {
+        return controllerFacade.getOutputPortStatus(groupId, outputPortId);
+    }
+
+    @Override
     public RemoteProcessGroupDTO getRemoteProcessGroup(String groupId, String remoteProcessGroupId) {
         return dtoFactory.createRemoteProcessGroupDto(remoteProcessGroupDAO.getRemoteProcessGroup(groupId, remoteProcessGroupId));
+    }
+
+    @Override
+    public RemoteProcessGroupStatusDTO getRemoteProcessGroupStatus(String groupId, String id) {
+        return controllerFacade.getRemoteProcessGroupStatus(groupId, id);
     }
 
     @Override

@@ -37,7 +37,11 @@ import org.apache.nifi.controller.queue.FlowFileQueue;
 import org.apache.nifi.controller.queue.QueueSize;
 import org.apache.nifi.controller.repository.ContentNotFoundException;
 import org.apache.nifi.controller.repository.claim.ContentDirection;
+import org.apache.nifi.controller.status.ConnectionStatus;
+import org.apache.nifi.controller.status.PortStatus;
 import org.apache.nifi.controller.status.ProcessGroupStatus;
+import org.apache.nifi.controller.status.ProcessorStatus;
+import org.apache.nifi.controller.status.RemoteProcessGroupStatus;
 import org.apache.nifi.diagnostics.SystemDiagnostics;
 import org.apache.nifi.flowfile.FlowFilePrioritizer;
 import org.apache.nifi.flowfile.attributes.CoreAttributes;
@@ -490,8 +494,18 @@ public class ControllerFacade {
      * @return the status for the specified processor
      */
     public ProcessorStatusDTO getProcessorStatus(final String groupId, final String processorId) {
-        // TODO
-        return null;
+        final ProcessGroupStatus processGroupStatus = flowController.getGroupStatus(groupId);
+        if (processGroupStatus == null) {
+            throw new ResourceNotFoundException(String.format("Unable to locate group with id '%s'.", groupId));
+        }
+
+        for (final ProcessorStatus processorStatus : processGroupStatus.getProcessorStatus()) {
+            if (processorId.equals(processorStatus.getId())) {
+                return dtoFactory.createProcessorStatusDto(processorStatus);
+            }
+        }
+
+        throw new ResourceNotFoundException(String.format("Unable to locate processor with id '%s'.", processorId));
     }
 
     /**
@@ -502,8 +516,18 @@ public class ControllerFacade {
      * @return the status for the specified connection
      */
     public ConnectionStatusDTO getConnectionStatus(final String groupId, final String connectionId) {
-        // TODO
-        return null;
+        final ProcessGroupStatus processGroupStatus = flowController.getGroupStatus(groupId);
+        if (processGroupStatus == null) {
+            throw new ResourceNotFoundException(String.format("Unable to locate group with id '%s'.", groupId));
+        }
+
+        for (final ConnectionStatus connectionStatus : processGroupStatus.getConnectionStatus()) {
+            if (connectionId.equals(connectionStatus.getId())) {
+                return dtoFactory.createConnectionStatusDto(connectionStatus);
+            }
+        }
+
+        throw new ResourceNotFoundException(String.format("Unable to locate connection with id '%s'.", connectionId));
     }
 
     /**
@@ -514,8 +538,18 @@ public class ControllerFacade {
      * @return the status for the specified input port
      */
     public PortStatusDTO getInputPortStatus(final String groupId, final String portId) {
-        // TODO
-        return null;
+        final ProcessGroupStatus processGroupStatus = flowController.getGroupStatus(groupId);
+        if (processGroupStatus == null) {
+            throw new ResourceNotFoundException(String.format("Unable to locate group with id '%s'.", groupId));
+        }
+
+        for (final PortStatus portStatus : processGroupStatus.getInputPortStatus()) {
+            if (portId.equals(portStatus.getId())) {
+                return dtoFactory.createPortStatusDto(portStatus);
+            }
+        }
+
+        throw new ResourceNotFoundException(String.format("Unable to locate input port with id '%s'.", portId));
     }
 
     /**
@@ -526,8 +560,18 @@ public class ControllerFacade {
      * @return the status for the specified output port
      */
     public PortStatusDTO getOutputPortStatus(final String groupId, final String portId) {
-        // TODO
-        return null;
+        final ProcessGroupStatus processGroupStatus = flowController.getGroupStatus(groupId);
+        if (processGroupStatus == null) {
+            throw new ResourceNotFoundException(String.format("Unable to locate group with id '%s'.", groupId));
+        }
+
+        for (final PortStatus portStatus : processGroupStatus.getOutputPortStatus()) {
+            if (portId.equals(portStatus.getId())) {
+                return dtoFactory.createPortStatusDto(portStatus);
+            }
+        }
+
+        throw new ResourceNotFoundException(String.format("Unable to locate output port with id '%s'.", portId));
     }
 
     /**
@@ -538,8 +582,18 @@ public class ControllerFacade {
      * @return the status for the specified remote process group
      */
     public RemoteProcessGroupStatusDTO getRemoteProcessGroupStatus(final String groupId, final String remoteProcessGroupId) {
-        // TODO
-        return null;
+        final ProcessGroupStatus processGroupStatus = flowController.getGroupStatus(groupId);
+        if (processGroupStatus == null) {
+            throw new ResourceNotFoundException(String.format("Unable to locate group with id '%s'.", groupId));
+        }
+
+        for (final RemoteProcessGroupStatus remoteProcessGroupStatus : processGroupStatus.getRemoteProcessGroupStatus()) {
+            if (remoteProcessGroupId.equals(remoteProcessGroupStatus.getId())) {
+                return dtoFactory.createRemoteProcessGroupStatusDto(remoteProcessGroupStatus);
+            }
+        }
+
+        throw new ResourceNotFoundException(String.format("Unable to locate remote process group with id '%s'.", remoteProcessGroupId));
     }
 
     /**
