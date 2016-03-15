@@ -16,16 +16,17 @@
  */
 package org.apache.nifi.cluster;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.List;
+
 import org.apache.nifi.controller.Counter;
 import org.apache.nifi.controller.StandardCounter;
-import org.apache.nifi.diagnostics.SystemDiagnostics;
 import org.apache.nifi.util.NiFiProperties;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -80,11 +81,9 @@ public class HeartbeatPayloadTest {
 
     @Test
     public void testMarshalling() {
-
         payload.setActiveThreadCount(activeThreadCount);
         payload.setTotalFlowFileCount(totalFlowFileCount);
         payload.setCounters(counters);
-        payload.setSystemDiagnostics(new SystemDiagnostics());
 
         HeartbeatPayload.marshal(payload, marshalledBytes);
         HeartbeatPayload newPayload = HeartbeatPayload.unmarshal(new ByteArrayInputStream(marshalledBytes.toByteArray()));
@@ -105,16 +104,4 @@ public class HeartbeatPayloadTest {
         assertEquals(expected.getName(), actual.getName());
         assertEquals(expected.getValue(), actual.getValue());
     }
-
-//    private void assertRepositoryStatusReportEntryEquals(RepositoryStatusReportEntry expected, RepositoryStatusReportEntry actual) {
-//        assertEquals(expected.getConsumerId(), actual.getConsumerId());
-//        assertEquals(expected.getBytesRead(), actual.getBytesRead());
-//        assertEquals(expected.getBytesWritten(), actual.getBytesWritten());
-//        assertEquals(expected.getContentSizeIn(), actual.getContentSizeIn());
-//        assertEquals(expected.getContentSizeOut(), actual.getContentSizeOut());
-//        assertEquals(expected.getFlowFilesIn(), actual.getFlowFilesIn());
-//        assertEquals(expected.getFlowFilesOut(), actual.getFlowFilesOut());
-//        assertEquals(expected.getInvocations(), actual.getInvocations());
-//        assertEquals(expected.getProcessingNanos(), actual.getProcessingNanos());
-//    }
 }

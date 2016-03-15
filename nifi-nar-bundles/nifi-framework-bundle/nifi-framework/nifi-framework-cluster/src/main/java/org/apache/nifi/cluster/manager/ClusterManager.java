@@ -33,7 +33,6 @@ import org.apache.nifi.cluster.protocol.ConnectionRequest;
 import org.apache.nifi.cluster.protocol.ConnectionResponse;
 import org.apache.nifi.cluster.protocol.Heartbeat;
 import org.apache.nifi.cluster.protocol.NodeIdentifier;
-import org.apache.nifi.diagnostics.SystemDiagnostics;
 import org.apache.nifi.remote.cluster.NodeInformant;
 import org.apache.nifi.reporting.BulletinRepository;
 
@@ -167,9 +166,4 @@ public interface ClusterManager extends NodeInformant {
      * @return the bulletin repository
      */
     BulletinRepository getBulletinRepository();
-
-    /**
-     * @return a merged representation of the System Diagnostics for all nodes in the cluster
-     */
-    SystemDiagnostics getSystemDiagnostics();
 }

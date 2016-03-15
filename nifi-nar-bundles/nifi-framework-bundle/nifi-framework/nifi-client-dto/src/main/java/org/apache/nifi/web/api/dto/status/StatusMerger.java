@@ -23,12 +23,18 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.nifi.controller.status.RunStatus;
 import org.apache.nifi.controller.status.TransmissionStatus;
 import org.apache.nifi.util.FormatUtils;
 import org.apache.nifi.web.api.dto.BulletinDTO;
+import org.apache.nifi.web.api.dto.NodeSystemDiagnosticsSnapshotDTO;
+import org.apache.nifi.web.api.dto.SystemDiagnosticsDTO;
+import org.apache.nifi.web.api.dto.SystemDiagnosticsSnapshotDTO;
+import org.apache.nifi.web.api.dto.SystemDiagnosticsSnapshotDTO.GarbageCollectionDTO;
+import org.apache.nifi.web.api.dto.SystemDiagnosticsSnapshotDTO.StorageUsageDTO;
 
 public class StatusMerger {
     public static void merge(final ControllerStatusDTO target, final ControllerStatusDTO toMerge) {
@@ -386,6 +392,140 @@ public class StatusMerger {
         target.setOutput(prettyPrint(target.getFlowFilesOut(), target.getBytesOut()));
     }
 
+
+    public static void merge(final SystemDiagnosticsDTO target, final SystemDiagnosticsDTO toMerge, final String nodeId, final String nodeAddress, final Integer nodeApiPort) {
+        merge(target.getAggregateSnapshot(), toMerge.getAggregateSnapshot());
+
+        List<NodeSystemDiagnosticsSnapshotDTO> nodeSnapshots = target.getNodeSnapshot();
+        if (nodeSnapshots == null) {
+            nodeSnapshots = new ArrayList<>();
+        }
+
+        final NodeSystemDiagnosticsSnapshotDTO nodeSnapshot = new NodeSystemDiagnosticsSnapshotDTO();
+        nodeSnapshot.setAddress(nodeAddress);
+        nodeSnapshot.setApiPort(nodeApiPort);
+        nodeSnapshot.setNodeId(nodeId);
+        nodeSnapshot.setSnapshot(toMerge.getAggregateSnapshot());
+
+        nodeSnapshots.add(nodeSnapshot);
+        target.setNodeSnapshot(nodeSnapshots);
+    }
+
+    public static void merge(final SystemDiagnosticsSnapshotDTO target, final SystemDiagnosticsSnapshotDTO toMerge) {
+        if (target == null || toMerge == null) {
+            return;
+        }
+
+        target.setAvailableProcessors(target.getAvailableProcessors() + toMerge.getAvailableProcessors());
+        target.setDaemonThreads(target.getDaemonThreads() + toMerge.getDaemonThreads());
+        target.setFreeHeapBytes(target.getFreeHeapBytes() + toMerge.getFreeHeapBytes());
+        target.setFreeNonHeapBytes(target.getFreeNonHeapBytes() + toMerge.getFreeNonHeapBytes());
+        target.setMaxHeapBytes(target.getMaxHeapBytes() + toMerge.getMaxHeapBytes());
+        target.setMaxNonHeapBytes(target.getMaxNonHeapBytes() + toMerge.getMaxNonHeapBytes());
+        target.setProcessorLoadAverage(target.getProcessorLoadAverage() + toMerge.getProcessorLoadAverage());
+        target.setTotalHeapBytes(target.getTotalHeapBytes() + toMerge.getTotalHeapBytes());
+        target.setTotalNonHeapBytes(target.getTotalNonHeapBytes() + toMerge.getTotalNonHeapBytes());
+        target.setTotalThreads(target.getTotalThreads() + toMerge.getTotalThreads());
+        target.setUsedHeapBytes(target.getUsedHeapBytes() + toMerge.getUsedHeapBytes());
+        target.setUsedNonHeapBytes(target.getUsedNonHeapBytes() + toMerge.getUsedNonHeapBytes());
+
+        merge(target.getContentRepositoryStorageUsage(), toMerge.getContentRepositoryStorageUsage());
+        merge(target.getFlowFileRepositoryStorageUsage(), toMerge.getFlowFileRepositoryStorageUsage());
+        mergeGarbageCollection(target.getGarbageCollection(), toMerge.getGarbageCollection());
+
+        updatePrettyPrintedFields(target);
+    }
+
+    public static void updatePrettyPrintedFields(final SystemDiagnosticsSnapshotDTO target) {
+        // heap
+        target.setMaxHeap(FormatUtils.formatDataSize(target.getMaxHeapBytes()));
+        target.setTotalHeap(FormatUtils.formatDataSize(target.getTotalHeapBytes()));
+        target.setUsedHeap(FormatUtils.formatDataSize(target.getUsedHeapBytes()));
+        target.setFreeHeap(FormatUtils.formatDataSize(target.getFreeHeapBytes()));
+        if (target.getMaxHeapBytes() != -1) {
+            target.setHeapUtilization(FormatUtils.formatUtilization(getUtilization(target.getUsedHeapBytes(), target.getMaxHeapBytes())));
+        }
+
+        // non heap
+        target.setMaxNonHeap(FormatUtils.formatDataSize(target.getMaxNonHeapBytes()));
+        target.setTotalNonHeap(FormatUtils.formatDataSize(target.getTotalNonHeapBytes()));
+        target.setUsedNonHeap(FormatUtils.formatDataSize(target.getUsedNonHeapBytes()));
+        target.setFreeNonHeap(FormatUtils.formatDataSize(target.getFreeNonHeapBytes()));
+        if (target.getMaxNonHeapBytes() != -1) {
+            target.setNonHeapUtilization(FormatUtils.formatUtilization(getUtilization(target.getUsedNonHeapBytes(), target.getMaxNonHeapBytes())));
+        }
+    }
+
+    public static void merge(final Set<StorageUsageDTO> targetSet, final Set<StorageUsageDTO> toMerge) {
+        final Map<String, StorageUsageDTO> storageById = new HashMap<>();
+        for (final StorageUsageDTO targetUsage : targetSet) {
+            storageById.put(targetUsage.getIdentifier(), targetUsage);
+        }
+
+        for (final StorageUsageDTO usageToMerge : toMerge) {
+            final StorageUsageDTO targetUsage = storageById.get(usageToMerge.getIdentifier());
+            if (targetUsage == null) {
+                storageById.put(usageToMerge.getIdentifier(), usageToMerge);
+            } else {
+                merge(targetUsage, usageToMerge);
+            }
+        }
+
+        targetSet.clear();
+        targetSet.addAll(storageById.values());
+    }
+
+    public static void merge(final StorageUsageDTO target, final StorageUsageDTO toMerge) {
+        target.setFreeSpaceBytes(target.getFreeSpaceBytes() + toMerge.getFreeSpaceBytes());
+        target.setTotalSpaceBytes(target.getTotalSpaceBytes() + toMerge.getTotalSpaceBytes());
+        target.setUsedSpaceBytes(target.getUsedSpaceBytes() + toMerge.getUsedSpaceBytes());
+        updatePrettyPrintedFields(target);
+    }
+
+    public static void updatePrettyPrintedFields(final StorageUsageDTO target) {
+        target.setFreeSpace(FormatUtils.formatDataSize(target.getFreeSpaceBytes()));
+        target.setTotalSpace(FormatUtils.formatDataSize(target.getTotalSpaceBytes()));
+        target.setUsedSpace(FormatUtils.formatDataSize(target.getUsedSpaceBytes()));
+
+        if (target.getTotalSpaceBytes() != -1) {
+            target.setUtilization(FormatUtils.formatUtilization(getUtilization(target.getUsedSpaceBytes(), target.getTotalSpaceBytes())));
+        }
+    }
+
+
+    public static void mergeGarbageCollection(final Set<GarbageCollectionDTO> targetSet, final Set<GarbageCollectionDTO> toMerge) {
+        final Map<String, GarbageCollectionDTO> storageById = new HashMap<>();
+        for (final GarbageCollectionDTO targetUsage : targetSet) {
+            storageById.put(targetUsage.getName(), targetUsage);
+        }
+
+        for (final GarbageCollectionDTO usageToMerge : toMerge) {
+            final GarbageCollectionDTO targetUsage = storageById.get(usageToMerge.getName());
+            if (targetUsage == null) {
+                storageById.put(usageToMerge.getName(), usageToMerge);
+            } else {
+                merge(targetUsage, usageToMerge);
+            }
+        }
+
+        targetSet.clear();
+        targetSet.addAll(storageById.values());
+    }
+
+    public static void merge(final GarbageCollectionDTO target, final GarbageCollectionDTO toMerge) {
+        target.setCollectionCount(target.getCollectionCount() + toMerge.getCollectionCount());
+        target.setCollectionMillis(target.getCollectionMillis() + toMerge.getCollectionMillis());
+        updatePrettyPrintedFields(target);
+    }
+
+    public static void updatePrettyPrintedFields(final GarbageCollectionDTO target) {
+        target.setCollectionTime(FormatUtils.formatHoursMinutesSeconds(target.getCollectionMillis(), TimeUnit.MILLISECONDS));
+    }
+
+
+    public static int getUtilization(final double used, final double total) {
+        return (int) Math.round((used / total) * 100);
+    }
 
     public static String formatCount(final Integer intStatus) {
         return intStatus == null ? "-" : FormatUtils.formatCount(intStatus);

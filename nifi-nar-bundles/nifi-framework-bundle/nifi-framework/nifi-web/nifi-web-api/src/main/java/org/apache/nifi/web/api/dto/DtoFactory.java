@@ -1862,48 +1862,59 @@ public final class DtoFactory {
     public SystemDiagnosticsDTO createSystemDiagnosticsDto(final SystemDiagnostics sysDiagnostics) {
 
         final SystemDiagnosticsDTO dto = new SystemDiagnosticsDTO();
-        dto.setStatsLastRefreshed(new Date(sysDiagnostics.getCreationTimestamp()));
+        final SystemDiagnosticsSnapshotDTO snapshot = new SystemDiagnosticsSnapshotDTO();
+        dto.setAggregateSnapshot(snapshot);
+
+        snapshot.setStatsLastRefreshed(new Date(sysDiagnostics.getCreationTimestamp()));
 
         // processors
-        dto.setAvailableProcessors(sysDiagnostics.getAvailableProcessors());
-        dto.setProcessorLoadAverage(sysDiagnostics.getProcessorLoadAverage());
+        snapshot.setAvailableProcessors(sysDiagnostics.getAvailableProcessors());
+        snapshot.setProcessorLoadAverage(sysDiagnostics.getProcessorLoadAverage());
 
         // threads
-        dto.setDaemonThreads(sysDiagnostics.getDaemonThreads());
-        dto.setTotalThreads(sysDiagnostics.getTotalThreads());
+        snapshot.setDaemonThreads(sysDiagnostics.getDaemonThreads());
+        snapshot.setTotalThreads(sysDiagnostics.getTotalThreads());
 
         // heap
-        dto.setMaxHeap(FormatUtils.formatDataSize(sysDiagnostics.getMaxHeap()));
-        dto.setTotalHeap(FormatUtils.formatDataSize(sysDiagnostics.getTotalHeap()));
-        dto.setUsedHeap(FormatUtils.formatDataSize(sysDiagnostics.getUsedHeap()));
-        dto.setFreeHeap(FormatUtils.formatDataSize(sysDiagnostics.getFreeHeap()));
+        snapshot.setMaxHeap(FormatUtils.formatDataSize(sysDiagnostics.getMaxHeap()));
+        snapshot.setMaxHeapBytes(sysDiagnostics.getMaxHeap());
+        snapshot.setTotalHeap(FormatUtils.formatDataSize(sysDiagnostics.getTotalHeap()));
+        snapshot.setTotalHeapBytes(sysDiagnostics.getTotalHeap());
+        snapshot.setUsedHeap(FormatUtils.formatDataSize(sysDiagnostics.getUsedHeap()));
+        snapshot.setUsedHeapBytes(sysDiagnostics.getUsedHeap());
+        snapshot.setFreeHeap(FormatUtils.formatDataSize(sysDiagnostics.getFreeHeap()));
+        snapshot.setFreeHeapBytes(sysDiagnostics.getFreeHeap());
         if (sysDiagnostics.getHeapUtilization() != -1) {
-            dto.setHeapUtilization(FormatUtils.formatUtilization(sysDiagnostics.getHeapUtilization()));
+            snapshot.setHeapUtilization(FormatUtils.formatUtilization(sysDiagnostics.getHeapUtilization()));
         }
 
         // non heap
-        dto.setMaxNonHeap(FormatUtils.formatDataSize(sysDiagnostics.getMaxNonHeap()));
-        dto.setTotalNonHeap(FormatUtils.formatDataSize(sysDiagnostics.getTotalNonHeap()));
-        dto.setUsedNonHeap(FormatUtils.formatDataSize(sysDiagnostics.getUsedNonHeap()));
-        dto.setFreeNonHeap(FormatUtils.formatDataSize(sysDiagnostics.getFreeNonHeap()));
+        snapshot.setMaxNonHeap(FormatUtils.formatDataSize(sysDiagnostics.getMaxNonHeap()));
+        snapshot.setMaxNonHeapBytes(sysDiagnostics.getMaxNonHeap());
+        snapshot.setTotalNonHeap(FormatUtils.formatDataSize(sysDiagnostics.getTotalNonHeap()));
+        snapshot.setTotalNonHeapBytes(sysDiagnostics.getTotalNonHeap());
+        snapshot.setUsedNonHeap(FormatUtils.formatDataSize(sysDiagnostics.getUsedNonHeap()));
+        snapshot.setUsedNonHeapBytes(sysDiagnostics.getUsedNonHeap());
+        snapshot.setFreeNonHeap(FormatUtils.formatDataSize(sysDiagnostics.getFreeNonHeap()));
+        snapshot.setFreeNonHeapBytes(sysDiagnostics.getFreeNonHeap());
         if (sysDiagnostics.getNonHeapUtilization() != -1) {
-            dto.setNonHeapUtilization(FormatUtils.formatUtilization(sysDiagnostics.getNonHeapUtilization()));
+            snapshot.setNonHeapUtilization(FormatUtils.formatUtilization(sysDiagnostics.getNonHeapUtilization()));
         }
 
         // flow file disk usage
-        final SystemDiagnosticsDTO.StorageUsageDTO flowFileRepositoryStorageUsageDto = createStorageUsageDTO(null, sysDiagnostics.getFlowFileRepositoryStorageUsage());
-        dto.setFlowFileRepositoryStorageUsage(flowFileRepositoryStorageUsageDto);
+        final SystemDiagnosticsSnapshotDTO.StorageUsageDTO flowFileRepositoryStorageUsageDto = createStorageUsageDTO(null, sysDiagnostics.getFlowFileRepositoryStorageUsage());
+        snapshot.setFlowFileRepositoryStorageUsage(flowFileRepositoryStorageUsageDto);
 
         // content disk usage
-        final Set<SystemDiagnosticsDTO.StorageUsageDTO> contentRepositoryStorageUsageDtos = new LinkedHashSet<>();
-        dto.setContentRepositoryStorageUsage(contentRepositoryStorageUsageDtos);
+        final Set<SystemDiagnosticsSnapshotDTO.StorageUsageDTO> contentRepositoryStorageUsageDtos = new LinkedHashSet<>();
+        snapshot.setContentRepositoryStorageUsage(contentRepositoryStorageUsageDtos);
         for (final Map.Entry<String, StorageUsage> entry : sysDiagnostics.getContentRepositoryStorageUsage().entrySet()) {
             contentRepositoryStorageUsageDtos.add(createStorageUsageDTO(entry.getKey(), entry.getValue()));
         }
 
         // garbage collection
-        final Set<SystemDiagnosticsDTO.GarbageCollectionDTO> garbageCollectionDtos = new LinkedHashSet<>();
-        dto.setGarbageCollection(garbageCollectionDtos);
+        final Set<SystemDiagnosticsSnapshotDTO.GarbageCollectionDTO> garbageCollectionDtos = new LinkedHashSet<>();
+        snapshot.setGarbageCollection(garbageCollectionDtos);
         for (final Map.Entry<String, GarbageCollection> entry : sysDiagnostics.getGarbageCollection().entrySet()) {
             garbageCollectionDtos.add(createGarbageCollectionDTO(entry.getKey(), entry.getValue()));
         }
@@ -1918,8 +1929,8 @@ public final class DtoFactory {
      * @param storageUsage usage
      * @return dto
      */
-    public SystemDiagnosticsDTO.StorageUsageDTO createStorageUsageDTO(final String identifier, final StorageUsage storageUsage) {
-        final SystemDiagnosticsDTO.StorageUsageDTO dto = new SystemDiagnosticsDTO.StorageUsageDTO();
+    public SystemDiagnosticsSnapshotDTO.StorageUsageDTO createStorageUsageDTO(final String identifier, final StorageUsage storageUsage) {
+        final SystemDiagnosticsSnapshotDTO.StorageUsageDTO dto = new SystemDiagnosticsSnapshotDTO.StorageUsageDTO();
         dto.setIdentifier(identifier);
         dto.setFreeSpace(FormatUtils.formatDataSize(storageUsage.getFreeSpace()));
         dto.setTotalSpace(FormatUtils.formatDataSize(storageUsage.getTotalSpace()));
@@ -1938,11 +1949,12 @@ public final class DtoFactory {
      * @param garbageCollection gc
      * @return dto
      */
-    public SystemDiagnosticsDTO.GarbageCollectionDTO createGarbageCollectionDTO(final String name, final GarbageCollection garbageCollection) {
-        final SystemDiagnosticsDTO.GarbageCollectionDTO dto = new SystemDiagnosticsDTO.GarbageCollectionDTO();
+    public SystemDiagnosticsSnapshotDTO.GarbageCollectionDTO createGarbageCollectionDTO(final String name, final GarbageCollection garbageCollection) {
+        final SystemDiagnosticsSnapshotDTO.GarbageCollectionDTO dto = new SystemDiagnosticsSnapshotDTO.GarbageCollectionDTO();
         dto.setName(name);
         dto.setCollectionCount(garbageCollection.getCollectionCount());
         dto.setCollectionTime(FormatUtils.formatHoursMinutesSeconds(garbageCollection.getCollectionTime(), TimeUnit.MILLISECONDS));
+        dto.setCollectionMillis(garbageCollection.getCollectionTime());
         return dto;
     }
 

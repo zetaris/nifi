@@ -39,7 +39,6 @@ import org.apache.nifi.web.api.dto.FunnelDTO;
 import org.apache.nifi.web.api.dto.LabelDTO;
 import org.apache.nifi.web.api.dto.ListingRequestDTO;
 import org.apache.nifi.web.api.dto.NodeDTO;
-import org.apache.nifi.web.api.dto.NodeSystemDiagnosticsDTO;
 import org.apache.nifi.web.api.dto.PortDTO;
 import org.apache.nifi.web.api.dto.ProcessGroupDTO;
 import org.apache.nifi.web.api.dto.ProcessorDTO;
@@ -1548,14 +1547,6 @@ public interface NiFiServiceFacade {
      * @param nodeId a node identifier
      */
     void deleteNode(String nodeId);
-
-    /**
-     * Returns the system diagnostics for the specified node id.
-     *
-     * @param nodeId The id of the desired node
-     * @return The node status
-     */
-    NodeSystemDiagnosticsDTO getNodeSystemDiagnostics(String nodeId);
 
     /**
      * Returns the cluster's status.

@@ -16,7 +16,56 @@
  */
 package org.apache.nifi.cluster.manager.impl;
 
-import com.sun.jersey.api.client.ClientResponse;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.Serializable;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Map;
+import java.util.NavigableSet;
+import java.util.Queue;
+import java.util.Set;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.UUID;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.regex.Pattern;
+
+import javax.net.ssl.SSLContext;
+import javax.ws.rs.HttpMethod;
+import javax.ws.rs.WebApplicationException;
+import javax.ws.rs.core.StreamingOutput;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.admin.service.AuditService;
 import org.apache.nifi.annotation.lifecycle.OnAdded;
@@ -106,9 +155,6 @@ import org.apache.nifi.controller.status.history.RemoteProcessGroupStatusDescrip
 import org.apache.nifi.controller.status.history.StandardStatusSnapshot;
 import org.apache.nifi.controller.status.history.StatusHistoryUtil;
 import org.apache.nifi.controller.status.history.StatusSnapshot;
-import org.apache.nifi.diagnostics.GarbageCollection;
-import org.apache.nifi.diagnostics.StorageUsage;
-import org.apache.nifi.diagnostics.SystemDiagnostics;
 import org.apache.nifi.encrypt.StringEncryptor;
 import org.apache.nifi.engine.FlowEngine;
 import org.apache.nifi.events.BulletinFactory;
@@ -167,6 +213,7 @@ import org.apache.nifi.web.api.dto.RemoteProcessGroupPortDTO;
 import org.apache.nifi.web.api.dto.ReportingTaskDTO;
 import org.apache.nifi.web.api.dto.StateEntryDTO;
 import org.apache.nifi.web.api.dto.StateMapDTO;
+import org.apache.nifi.web.api.dto.SystemDiagnosticsDTO;
 import org.apache.nifi.web.api.dto.provenance.ProvenanceDTO;
 import org.apache.nifi.web.api.dto.provenance.ProvenanceEventDTO;
 import org.apache.nifi.web.api.dto.provenance.ProvenanceRequestDTO;
@@ -202,6 +249,7 @@ import org.apache.nifi.web.api.entity.RemoteProcessGroupsEntity;
 import org.apache.nifi.web.api.entity.ReportingTaskEntity;
 import org.apache.nifi.web.api.entity.ReportingTasksEntity;
 import org.apache.nifi.web.api.entity.StatusHistoryEntity;
+import org.apache.nifi.web.api.entity.SystemDiagnosticsEntity;
 import org.apache.nifi.web.util.WebUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -212,55 +260,7 @@ import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 import org.xml.sax.SAXParseException;
 
-import javax.net.ssl.SSLContext;
-import javax.ws.rs.HttpMethod;
-import javax.ws.rs.WebApplicationException;
-import javax.ws.rs.core.StreamingOutput;
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
-import javax.xml.transform.OutputKeys;
-import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerException;
-import javax.xml.transform.TransformerFactory;
-import javax.xml.transform.dom.DOMSource;
-import javax.xml.transform.stream.StreamResult;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.Serializable;
-import java.net.URI;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.ListIterator;
-import java.util.Map;
-import java.util.NavigableSet;
-import java.util.Queue;
-import java.util.Set;
-import java.util.Timer;
-import java.util.TimerTask;
-import java.util.TreeMap;
-import java.util.TreeSet;
-import java.util.UUID;
-import java.util.concurrent.CompletionService;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutorCompletionService;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.regex.Pattern;
+import com.sun.jersey.api.client.ClientResponse;
 
 /**
  * Provides a cluster manager implementation. The manager federates incoming HTTP client requests to the nodes' external API using the HTTP protocol. The manager also communicates with nodes using the
@@ -346,6 +346,7 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
     public static final Pattern REPORTING_TASK_URI_PATTERN = Pattern.compile("/nifi-api/controller/reporting-tasks/node/[a-f0-9\\-]{36}");
     public static final Pattern REPORTING_TASK_STATE_URI_PATTERN = Pattern.compile("/nifi-api/controller/reporting-tasks/node/[a-f0-9\\-]{36}/state");
     public static final Pattern BULLETIN_BOARD_URI_PATTERN = Pattern.compile("/nifi-api/controller/bulletin-board");
+    public static final Pattern SYSTEM_DIAGNOSTICS_URI_PATTERN = Pattern.compile("/nifi-api/system-diagnostics");
 
     public static final Pattern PROCESSOR_STATUS_HISTORY_URI_PATTERN =
         Pattern.compile("/nifi-api/controller/process-groups/(?:(?:root)|(?:[a-f0-9\\-]{36}))/processors/[a-f0-9\\-]{36}/status/history");
@@ -2464,6 +2465,10 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
         return "GET".equalsIgnoreCase(method) && BULLETIN_BOARD_URI_PATTERN.matcher(uri.getPath()).matches();
     }
 
+    private static boolean isSystemDiagnosticsEndpoint(final URI uri, final String method) {
+        return "GET".equalsIgnoreCase(method) && SYSTEM_DIAGNOSTICS_URI_PATTERN.matcher(uri.getPath()).matches();
+    }
+
 
     private static boolean isRemoteProcessGroupEndpoint(final URI uri, final String method) {
         if (("GET".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method)) && REMOTE_PROCESS_GROUP_URI_PATTERN.matcher(uri.getPath()).matches()) {
@@ -2571,7 +2576,7 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
                 || isGroupStatusEndpoint(uri, method) || isProcessorStatusEndpoint(uri, method) || isControllerStatusEndpoint(uri, method)
                 || isProcessorStatusHistoryEndpoint(uri, method) || isProcessGroupStatusHistoryEndpoint(uri, method)
                 || isRemoteProcessGroupStatusHistoryEndpoint(uri, method) || isConnectionStatusHistoryEndpoint(uri, method)
-                || isBulletinBoardEndpoint(uri, method);
+                || isBulletinBoardEndpoint(uri, method) || isSystemDiagnosticsEndpoint(uri, method);
     }
 
     private void mergeProcessorValidationErrors(final ProcessorDTO processor, Map<NodeIdentifier, ProcessorDTO> processorMap) {
@@ -2624,6 +2629,14 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
     }
 
 
+    private void mergeSystemDiagnostics(final SystemDiagnosticsDTO target, final Map<NodeIdentifier, SystemDiagnosticsDTO> resultMap) {
+        for (final Map.Entry<NodeIdentifier, SystemDiagnosticsDTO> entry : resultMap.entrySet()) {
+            final NodeIdentifier nodeId = entry.getKey();
+            final SystemDiagnosticsDTO toMerge = entry.getValue();
+
+            StatusMerger.merge(target, toMerge, nodeId.getId(), nodeId.getApiAddress(), nodeId.getApiPort());
+        }
+    }
 
     private void mergeGroupStatus(final ProcessGroupStatusDTO statusDto, final Map<NodeIdentifier, ProcessGroupStatusDTO> resultMap) {
         ProcessGroupStatusDTO mergedProcessGroupStatus = statusDto;
@@ -3839,6 +3852,24 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
             }
 
             clientResponse = mergeStatusHistoryResponses(clientResponse, updatedNodesMap, problematicNodeResponses, metricDescriptors);
+        } else if (hasSuccessfulClientResponse && isSystemDiagnosticsEndpoint(uri, method)) {
+            final SystemDiagnosticsEntity responseEntity = clientResponse.getClientResponse().getEntity(SystemDiagnosticsEntity.class);
+            final SystemDiagnosticsDTO responseDto = responseEntity.getSystemDiagnostics();
+
+            final Map<NodeIdentifier, SystemDiagnosticsDTO> resultsMap = new HashMap<>();
+            for (final NodeResponse nodeResponse : updatedNodesMap.values()) {
+                if (problematicNodeResponses.contains(nodeResponse)) {
+                    continue;
+                }
+
+                final SystemDiagnosticsEntity nodeResponseEntity = nodeResponse == clientResponse ? responseEntity : nodeResponse.getClientResponse().getEntity(SystemDiagnosticsEntity.class);
+                final SystemDiagnosticsDTO nodeStatus = nodeResponseEntity.getSystemDiagnostics();
+
+                resultsMap.put(nodeResponse.getNodeId(), nodeStatus);
+            }
+            mergeSystemDiagnostics(responseDto, resultsMap);
+
+            clientResponse = new NodeResponse(clientResponse, responseEntity);
         } else {
             if (!nodeResponsesToDrain.isEmpty()) {
                 drainResponses(nodeResponsesToDrain);
@@ -3937,6 +3968,7 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
 
         return new NodeResponse(clientResponse, clusterEntity);
     }
+
 
 
     /**
@@ -4362,116 +4394,6 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
         return bulletinRepository;
     }
 
-
-    @Override
-    public SystemDiagnostics getSystemDiagnostics() {
-        final Set<Node> connectedNodes = getNodes(Node.Status.CONNECTED);
-
-        // ensure there are some nodes...
-        if (connectedNodes.isEmpty()) {
-            throw new NoConnectedNodesException();
-        }
-
-        SystemDiagnostics clusterDiagnostics = null;
-        for (final Node node : connectedNodes) {
-            final HeartbeatPayload nodeHeartbeatPayload = node.getHeartbeatPayload();
-            if (nodeHeartbeatPayload == null) {
-                continue;
-            }
-            final SystemDiagnostics nodeDiagnostics = nodeHeartbeatPayload.getSystemDiagnostics();
-            if (nodeDiagnostics == null) {
-                continue;
-            }
-
-            if (clusterDiagnostics == null) {
-                clusterDiagnostics = nodeDiagnostics.clone();
-            } else {
-                merge(clusterDiagnostics, nodeDiagnostics);
-            }
-        }
-
-        return clusterDiagnostics;
-    }
-
-    private void merge(final SystemDiagnostics target, final SystemDiagnostics sd) {
-
-        // threads
-        target.setDaemonThreads(target.getDaemonThreads() + sd.getDaemonThreads());
-        target.setTotalThreads(target.getTotalThreads() + sd.getTotalThreads());
-
-        // heap
-        target.setTotalHeap(target.getTotalHeap() + sd.getTotalHeap());
-        target.setUsedHeap(target.getUsedHeap() + sd.getUsedHeap());
-        target.setMaxHeap(target.getMaxHeap() + sd.getMaxHeap());
-
-        // non heap
-        target.setTotalNonHeap(target.getTotalNonHeap() + sd.getTotalNonHeap());
-        target.setUsedNonHeap(target.getUsedNonHeap() + sd.getUsedNonHeap());
-        target.setMaxNonHeap(target.getMaxNonHeap() + sd.getMaxNonHeap());
-
-        // processors
-        target.setAvailableProcessors(target.getAvailableProcessors() + sd.getAvailableProcessors());
-
-        // load
-        if (sd.getProcessorLoadAverage() != null) {
-            if (target.getProcessorLoadAverage() != null) {
-                target.setProcessorLoadAverage(target.getProcessorLoadAverage() + sd.getProcessorLoadAverage());
-            } else {
-                target.setProcessorLoadAverage(sd.getProcessorLoadAverage());
-            }
-        }
-
-        // db disk usage
-        merge(target.getFlowFileRepositoryStorageUsage(), sd.getFlowFileRepositoryStorageUsage());
-
-        // repo disk usage
-        final Map<String, StorageUsage> targetContentRepoMap;
-        if (target.getContentRepositoryStorageUsage() == null) {
-            targetContentRepoMap = new LinkedHashMap<>();
-            target.setContentRepositoryStorageUsage(targetContentRepoMap);
-        } else {
-            targetContentRepoMap = target.getContentRepositoryStorageUsage();
-        }
-        if (sd.getContentRepositoryStorageUsage() != null) {
-            for (final Map.Entry<String, StorageUsage> sdEntry : sd.getContentRepositoryStorageUsage().entrySet()) {
-                final StorageUsage mergedDiskUsage = targetContentRepoMap.get(sdEntry.getKey());
-                if (mergedDiskUsage == null) {
-                    targetContentRepoMap.put(sdEntry.getKey(), sdEntry.getValue());
-                } else {
-                    merge(mergedDiskUsage, sdEntry.getValue());
-                }
-            }
-        }
-
-        // garbage collection
-        final Map<String, GarbageCollection> targetGarbageCollection;
-        if (target.getGarbageCollection() == null) {
-            targetGarbageCollection = new LinkedHashMap<>();
-            target.setGarbageCollection(targetGarbageCollection);
-        } else {
-            targetGarbageCollection = target.getGarbageCollection();
-        }
-        if (sd.getGarbageCollection() != null) {
-            for (final Map.Entry<String, GarbageCollection> gcEntry : sd.getGarbageCollection().entrySet()) {
-                final GarbageCollection mergedGarbageCollection = targetGarbageCollection.get(gcEntry.getKey());
-                if (mergedGarbageCollection == null) {
-                    targetGarbageCollection.put(gcEntry.getKey(), gcEntry.getValue().clone());
-                } else {
-                    merge(mergedGarbageCollection, gcEntry.getValue());
-                }
-            }
-        }
-    }
-
-    private void merge(final StorageUsage target, final StorageUsage du) {
-        target.setFreeSpace(target.getFreeSpace() + du.getFreeSpace());
-        target.setTotalSpace(target.getTotalSpace() + du.getTotalSpace());
-    }
-
-    private void merge(final GarbageCollection target, final GarbageCollection gc) {
-        target.setCollectionCount(target.getCollectionCount() + gc.getCollectionCount());
-        target.setCollectionTime(target.getCollectionTime() + gc.getCollectionTime());
-    }
 
     public static Date normalizeStatusSnapshotDate(final Date toNormalize, final long numMillis) {
         final long time = toNormalize.getTime();

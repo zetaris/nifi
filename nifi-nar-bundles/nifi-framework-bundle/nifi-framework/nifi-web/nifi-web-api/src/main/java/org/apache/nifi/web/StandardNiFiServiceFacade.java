@@ -16,6 +16,25 @@
  */
 package org.apache.nifi.web;
 
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Map;
+import java.util.Set;
+import java.util.TimeZone;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+
+import javax.ws.rs.WebApplicationException;
+
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.action.Action;
@@ -30,7 +49,6 @@ import org.apache.nifi.authorization.Authority;
 import org.apache.nifi.cluster.HeartbeatPayload;
 import org.apache.nifi.cluster.context.ClusterContext;
 import org.apache.nifi.cluster.context.ClusterContextThreadLocal;
-import org.apache.nifi.cluster.manager.exception.IllegalClusterStateException;
 import org.apache.nifi.cluster.manager.exception.NoConnectedNodesException;
 import org.apache.nifi.cluster.manager.exception.UnknownNodeException;
 import org.apache.nifi.cluster.manager.impl.WebClusterManager;
@@ -95,7 +113,6 @@ import org.apache.nifi.web.api.dto.FunnelDTO;
 import org.apache.nifi.web.api.dto.LabelDTO;
 import org.apache.nifi.web.api.dto.ListingRequestDTO;
 import org.apache.nifi.web.api.dto.NodeDTO;
-import org.apache.nifi.web.api.dto.NodeSystemDiagnosticsDTO;
 import org.apache.nifi.web.api.dto.PortDTO;
 import org.apache.nifi.web.api.dto.PreviousValueDTO;
 import org.apache.nifi.web.api.dto.ProcessGroupDTO;
@@ -147,24 +164,6 @@ import org.apache.nifi.web.util.SnippetUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
-
-import javax.ws.rs.WebApplicationException;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.ListIterator;
-import java.util.Map;
-import java.util.Set;
-import java.util.TimeZone;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Implementation of NiFiServiceFacade that performs revision checking.
@@ -2362,18 +2361,8 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
 
     @Override
     public SystemDiagnosticsDTO getSystemDiagnostics() {
-        final SystemDiagnosticsDTO dto;
-        if (properties.isClusterManager()) {
-            final SystemDiagnostics clusterDiagnostics = clusterManager.getSystemDiagnostics();
-            if (clusterDiagnostics == null) {
-                throw new IllegalStateException("Nodes are connected but no systems diagnostics have been reported.");
-            }
-            dto = dtoFactory.createSystemDiagnosticsDto(clusterDiagnostics);
-        } else {
-            final SystemDiagnostics sysDiagnostics = controllerFacade.getSystemDiagnostics();
-            dto = dtoFactory.createSystemDiagnosticsDto(sysDiagnostics);
-        }
-        return dto;
+        final SystemDiagnostics sysDiagnostics = controllerFacade.getSystemDiagnostics();
+        return dtoFactory.createSystemDiagnosticsDto(sysDiagnostics);
     }
 
     /**
@@ -2880,40 +2869,6 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
 
         final String userDn = user.getIdentity();
         clusterManager.deleteNode(nodeId, userDn);
-    }
-
-    @Override
-    public NodeSystemDiagnosticsDTO getNodeSystemDiagnostics(String nodeId) {
-        // find the node in question
-        final Node node = clusterManager.getNode(nodeId);
-
-        // verify node state
-        if (node == null) {
-            throw new UnknownNodeException("Node does not exist.");
-        } else if (Node.Status.CONNECTED != node.getStatus()) {
-            throw new IllegalClusterStateException(
-                    String.format("Node '%s:%s' is not connected to the cluster.",
-                            node.getNodeId().getApiAddress(), node.getNodeId().getApiPort()));
-        }
-
-        // get the node's last heartbeat
-        final NodeSystemDiagnosticsDTO nodeStatus = new NodeSystemDiagnosticsDTO();
-        final HeartbeatPayload nodeHeartbeatPayload = node.getHeartbeatPayload();
-        if (nodeHeartbeatPayload == null) {
-            return nodeStatus;
-        }
-
-        // get the node status
-        final SystemDiagnostics nodeSystemDiagnostics = nodeHeartbeatPayload.getSystemDiagnostics();
-        if (nodeSystemDiagnostics == null) {
-            return nodeStatus;
-        }
-
-        // populate the dto
-        nodeStatus.setControllerStatus(dtoFactory.createSystemDiagnosticsDto(nodeSystemDiagnostics));
-        nodeStatus.setNode(dtoFactory.createNodeDTO(node, clusterManager.getNodeEvents(nodeId), isPrimaryNode(nodeId)));
-
-        return nodeStatus;
     }
 
     @Override
