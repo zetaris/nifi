@@ -29,12 +29,6 @@ nf.SummaryTable = (function () {
         urls: {
             status: '../nifi-api/controller/process-groups/root/status',
             processGroups: '../nifi-api/controller/process-groups/',
-            clusterProcessor: '../nifi-api/cluster/processors/',
-            clusterConnection: '../nifi-api/cluster/connections/',
-            clusterProcessGroup: '../nifi-api/cluster/process-groups/',
-            clusterInputPort: '../nifi-api/cluster/input-ports/',
-            clusterOutputPort: '../nifi-api/cluster/output-ports/',
-            clusterRemoteProcessGroup: '../nifi-api/cluster/remote-process-groups/',
             systemDiagnostics: '../nifi-api/system-diagnostics',
             controllerConfig: '../nifi-api/controller/config',
             d3Script: 'js/d3/d3.min.js',
@@ -432,7 +426,7 @@ nf.SummaryTable = (function () {
                     nf.StatusHistory.showProcessorChart(item.groupId, item.id);
                 } else if (target.hasClass('show-cluster-processor-summary')) {
                     // load the cluster processor summary
-                    loadClusterProcessorSummary(item.id);
+                    loadClusterProcessorSummary(item.groupId, item.id);
 
                     // hide the summary loading indicator
                     $('#summary-loading-container').hide();
@@ -520,7 +514,7 @@ nf.SummaryTable = (function () {
         
         // cluster processor refresh
         nf.Common.addHoverEffect('#cluster-processor-refresh-button', 'button-refresh', 'button-refresh-hover').click(function () {
-            loadClusterProcessorSummary($('#cluster-processor-id').text());
+            loadClusterProcessorSummary($('#cluster-group-id').text(), $('#cluster-processor-id').text());
         });
 
         // initialize the cluster processor column model
@@ -1133,7 +1127,7 @@ nf.SummaryTable = (function () {
                     goTo(item.groupId, item.id);
                 } else if (target.hasClass('show-cluster-input-port-summary')) {
                     // load the cluster processor summary
-                    loadClusterInputPortSummary(item.id);
+                    loadClusterInputPortSummary(item.groupId, item.id);
 
                     // hide the summary loading indicator
                     $('#summary-loading-container').hide();
@@ -1217,7 +1211,7 @@ nf.SummaryTable = (function () {
         
         // cluster input port refresh
         nf.Common.addHoverEffect('#cluster-input-port-refresh-button', 'button-refresh', 'button-refresh-hover').click(function () {
-            loadClusterInputPortSummary($('#cluster-input-port-id').text());
+            loadClusterInputPortSummary($('#cluster-input-port-group-id').text(), $('#cluster-input-port-id').text());
         });
 
         // initialize the cluster input port column model
@@ -1355,7 +1349,7 @@ nf.SummaryTable = (function () {
                     goTo(item.groupId, item.id);
                 } else if (target.hasClass('show-cluster-output-port-summary')) {
                     // load the cluster processor summary
-                    loadClusterOutputPortSummary(item.id);
+                    loadClusterOutputPortSummary(item.groupId, item.id);
 
                     // hide the summary loading indicator
                     $('#summary-loading-container').hide();
@@ -1439,7 +1433,7 @@ nf.SummaryTable = (function () {
         
         // cluster output port refresh
         nf.Common.addHoverEffect('#cluster-output-port-refresh-button', 'button-refresh', 'button-refresh-hover').click(function () {
-            loadClusterOutputPortSummary($('#cluster-output-port-id').text());
+            loadClusterOutputPortSummary($('#cluster-output-port-group-id').text(), $('#cluster-output-port-id').text());
         });
 
         // initialize the cluster output port column model
@@ -1613,7 +1607,7 @@ nf.SummaryTable = (function () {
                     nf.StatusHistory.showRemoteProcessGroupChart(item.groupId, item.id);
                 } else if (target.hasClass('show-cluster-remote-process-group-summary')) {
                     // load the cluster processor summary
-                    loadClusterRemoteProcessGroupSummary(item.id);
+                    loadClusterRemoteProcessGroupSummary(item.groupId, item.id);
 
                     // hide the summary loading indicator
                     $('#summary-loading-container').hide();
@@ -1697,7 +1691,7 @@ nf.SummaryTable = (function () {
         
         // cluster remote process group refresh
         nf.Common.addHoverEffect('#cluster-remote-process-group-refresh-button', 'button-refresh', 'button-refresh-hover').click(function () {
-            loadClusterRemoteProcessGroupSummary($('#cluster-remote-process-group-id').text());
+            loadClusterRemoteProcessGroupSummary($('#cluster-remote-process-group-group-id').text(), $('#cluster-remote-process-group-id').text());
         });
 
         // initialize the cluster remote process group column model
@@ -2082,39 +2076,39 @@ nf.SummaryTable = (function () {
      * @argument {array} inputPortItems                 The input port data
      * @argument {array} outputPortItems                The input port data
      * @argument {array} remoteProcessGroupItems        The remote process group data
-     * @argument {object} processGroupStatus            The process group status
+     * @argument {object} aggregateStatus            The process group status
      */
-    var populateProcessGroupStatus = function (processorItems, connectionItems, processGroupItems, inputPortItems, outputPortItems, remoteProcessGroupItems, processGroupStatus) {
+    var populateProcessGroupStatus = function (processorItems, connectionItems, processGroupItems, inputPortItems, outputPortItems, remoteProcessGroupItems, aggregateStatus) {
         // add the processors to the summary grid
-        $.each(processGroupStatus.processorStatus, function (i, procStatus) {
+        $.each(aggregateStatus.processorStatusSnapshots, function (i, procStatus) {
             processorItems.push(procStatus);
         });
 
         // add the processors to the summary grid
-        $.each(processGroupStatus.connectionStatus, function (i, connStatus) {
+        $.each(aggregateStatus.connectionStatusSnapshots, function (i, connStatus) {
             connectionItems.push(connStatus);
         });
 
         // add the input ports to the summary grid
-        $.each(processGroupStatus.inputPortStatus, function (i, portStatus) {
+        $.each(aggregateStatus.inputPortStatusSnapshots, function (i, portStatus) {
             inputPortItems.push(portStatus);
         });
 
         // add the input ports to the summary grid
-        $.each(processGroupStatus.outputPortStatus, function (i, portStatus) {
+        $.each(aggregateStatus.outputPortStatusSnapshots, function (i, portStatus) {
             outputPortItems.push(portStatus);
         });
 
         // add the input ports to the summary grid
-        $.each(processGroupStatus.remoteProcessGroupStatus, function (i, rpgStatus) {
+        $.each(aggregateStatus.remoteProcessGroupStatusSnapshots, function (i, rpgStatus) {
             remoteProcessGroupItems.push(rpgStatus);
         });
         
         // add the process group status as well
-        processGroupItems.push(processGroupStatus);
+        processGroupItems.push(aggregateStatus);
 
         // add any child group's status
-        $.each(processGroupStatus.processGroupStatus, function (i, childProcessGroup) {
+        $.each(aggregateStatus.processGroupStatusSnapshots, function (i, childProcessGroup) {
             populateProcessGroupStatus(processorItems, connectionItems, processGroupItems, inputPortItems, outputPortItems, remoteProcessGroupItems, childProcessGroup);
         });
     };
@@ -2145,16 +2139,17 @@ nf.SummaryTable = (function () {
 
     /**
      * Loads  the cluster processor details dialog for the specified processor.
-     * 
-     * @argument {string} rowId     The row id
+     *
+     * @argument {string} groupId         The group id
+     * @argument {string} processorId     The processor id
      */
-    var loadClusterProcessorSummary = function (rowId) {
+    var loadClusterProcessorSummary = function (groupId, processorId) {
         // get the summary
         $.ajax({
             type: 'GET',
-            url: config.urls.clusterProcessor + encodeURIComponent(rowId) + '/status',
+            url: config.urls.processGroups + encodeURIComponent(groupId) + '/processors/' + encodeURIComponent(processorId) + '/status',
             data: {
-                verbose: true
+                nodewise: true
             },
             dataType: 'json'
         }).done(function (response) {
@@ -2190,6 +2185,7 @@ nf.SummaryTable = (function () {
                 // populate the processor details
                 $('#cluster-processor-name').text(clusterProcessorStatus.processorName).ellipsis();
                 $('#cluster-processor-id').text(clusterProcessorStatus.processorId);
+                $('#cluster-processor-group-id').text(clusterProcessorStatus.groupId);
 
                 // update the stats last refreshed timestamp
                 $('#cluster-processor-summary-last-refreshed').text(clusterProcessorStatus.statsLastRefreshed);
@@ -2199,16 +2195,17 @@ nf.SummaryTable = (function () {
 
     /**
      * Loads the cluster connection details dialog for the specified processor.
-     * 
-     * @argument {string} rowId     The row id
+     *
+     * @argument {string} groupId   The group id
+     * @argument {string} connectionId     The connection id
      */
-    var loadClusterConnectionSummary = function (rowId) {
+    var loadClusterConnectionSummary = function (connectionId) {
         // get the summary
         $.ajax({
             type: 'GET',
-            url: config.urls.clusterConnection + encodeURIComponent(rowId) + '/status',
+            url: config.urls.processGroups + encodeURIComponent(groupId) + '/connections/' + encodeURIComponent(connectionId) + '/status',
             data: {
-                verbose: true
+                nodewise: true
             },
             dataType: 'json'
         }).done(function (response) {
@@ -2241,6 +2238,7 @@ nf.SummaryTable = (function () {
                 // populate the processor details
                 $('#cluster-connection-name').text(clusterConnectionStatus.connectionName).ellipsis();
                 $('#cluster-connection-id').text(clusterConnectionStatus.connectionId);
+                $('#cluster-connection-group-id').text(clusterConnectionStatus.groupId);
 
                 // update the stats last refreshed timestamp
                 $('#cluster-connection-summary-last-refreshed').text(clusterConnectionStatus.statsLastRefreshed);
@@ -2251,15 +2249,15 @@ nf.SummaryTable = (function () {
     /**
      * Loads the cluster input port details dialog for the specified processor.
      * 
-     * @argument {string} rowId     The row id
+     * @argument {string} processGroupId     The process group id
      */
-    var loadClusterProcessGroupSummary = function (rowId) {
+    var loadClusterProcessGroupSummary = function (processGroupId) {
         // get the summary
         $.ajax({
             type: 'GET',
-            url: config.urls.clusterProcessGroup + encodeURIComponent(rowId) + '/status',
+            url: config.urls.processGroups + encodeURIComponent(processGroupId) + '/status',
             data: {
-                verbose: true
+                nodewise: true
             },
             dataType: 'json'
         }).done(function (response) {
@@ -2307,16 +2305,17 @@ nf.SummaryTable = (function () {
 
     /**
      * Loads the cluster input port details dialog for the specified processor.
-     * 
-     * @argument {string} rowId     The row id
+     *
+     * @argument {string} groupId         The group id
+     * @argument {string} inputPortId     The input port id
      */
-    var loadClusterInputPortSummary = function (rowId) {
+    var loadClusterInputPortSummary = function (groupId, inputPortId) {
         // get the summary
         $.ajax({
             type: 'GET',
-            url: config.urls.clusterInputPort + encodeURIComponent(rowId) + '/status',
+            url: config.urls.processGroups + encodeURIComponent(groupId) + '/input-ports/' + encodeURIComponent(inputPortId) + '/status',
             data: {
-                verbose: true
+                nodewise: true
             },
             dataType: 'json'
         }).done(function (response) {
@@ -2347,6 +2346,7 @@ nf.SummaryTable = (function () {
                 // populate the input port details
                 $('#cluster-input-port-name').text(clusterInputPortStatus.portName).ellipsis();
                 $('#cluster-input-port-id').text(clusterInputPortStatus.portId);
+                $('#cluster-input-port-group-id').text(clusterInputPortStatus.groupId);
 
                 // update the stats last refreshed timestamp
                 $('#cluster-input-port-summary-last-refreshed').text(clusterInputPortStatus.statsLastRefreshed);
@@ -2356,16 +2356,17 @@ nf.SummaryTable = (function () {
 
     /**
      * Loads the cluster output port details dialog for the specified processor.
-     * 
-     * @argument {string} rowId     The row id
+     *
+     * @argument {string} groupId          The group id
+     * @argument {string} outputPortId     The row id
      */
-    var loadClusterOutputPortSummary = function (rowId) {
+    var loadClusterOutputPortSummary = function (groupId, outputPortId) {
         // get the summary
         $.ajax({
             type: 'GET',
-            url: config.urls.clusterOutputPort + encodeURIComponent(rowId) + '/status',
+            url: config.urls.processGroups + encodeURIComponent(groupId) + '/output-ports/' + encodeURIComponent(outputPortId) + '/status',
             data: {
-                verbose: true
+                nodewise: true
             },
             dataType: 'json'
         }).done(function (response) {
@@ -2396,6 +2397,7 @@ nf.SummaryTable = (function () {
                 // populate the output port details
                 $('#cluster-output-port-name').text(clusterOutputPortStatus.portName).ellipsis();
                 $('#cluster-output-port-id').text(clusterOutputPortStatus.portId);
+                $('#cluster-output-port-group-id').text(clusterOutputPortStatus.groupId);
 
                 // update the stats last refreshed timestamp
                 $('#cluster-output-port-summary-last-refreshed').text(clusterOutputPortStatus.statsLastRefreshed);
@@ -2405,16 +2407,17 @@ nf.SummaryTable = (function () {
 
     /**
      * Loads the cluster remote process group details dialog for the specified processor.
-     * 
-     * @argument {string} rowId     The row id
+     *
+     * @argument {string} groupId   The group id
+     * @argument {string} remoteProcessGroupId     The remote process group id
      */
-    var loadClusterRemoteProcessGroupSummary = function (rowId) {
+    var loadClusterRemoteProcessGroupSummary = function (groupId, remoteProcessGroupId) {
         // get the summary
         $.ajax({
             type: 'GET',
-            url: config.urls.clusterRemoteProcessGroup + encodeURIComponent(rowId) + '/status',
+            url: config.urls.processGroups + encodeURIComponent(groupId) + '/remote-process-groups/' + encodeURIComponent(remoteProcessGroupId) + '/status',
             data: {
-                verbose: true
+                nodewise: true
             },
             dataType: 'json'
         }).done(function (response) {
@@ -2448,12 +2451,15 @@ nf.SummaryTable = (function () {
                 // populate the remote process group details
                 $('#cluster-remote-process-group-name').text(clusterRemoteProcessGroupStatus.remoteProcessGroupName).ellipsis();
                 $('#cluster-remote-process-group-id').text(clusterRemoteProcessGroupStatus.remoteProcessGroupId);
+                $('#cluster-remote-process-group-group-id').text(clusterRemoteProcessGroupStatus.groupId);
 
                 // update the stats last refreshed timestamp
                 $('#cluster-remote-process-group-summary-last-refreshed').text(clusterRemoteProcessGroupStatus.statsLastRefreshed);
             }
         }).fail(nf.Common.handleAjaxError);
     };
+
+    var clusterNodeId = null;
 
     return {
         
@@ -2463,18 +2469,12 @@ nf.SummaryTable = (function () {
         systemDiagnosticsUrl: null,
         
         /**
-         * URL for loading the summary.
-         */
-        url: null,
-        
-        /**
          * Initializes the status table.
          * 
          * @argument {boolean} isClustered Whether or not this NiFi is clustered.
          */
         init: function (isClustered) {
             // initialize the summary urls
-            nf.SummaryTable.url = config.urls.status;
             nf.SummaryTable.systemDiagnosticsUrl = config.urls.systemDiagnostics;
 
             return $.Deferred(function (deferred) {
@@ -2490,7 +2490,16 @@ nf.SummaryTable = (function () {
                 });
             }).promise();
         },
-        
+
+        /**
+         * Sets the cluster node id which will only show status from this node on subsequent reloads.
+         *
+         * @param nodeId
+         */
+        setClusterNodeId: function (nodeId) {
+            clusterNodeId = nodeId;
+        },
+
         /**
          * Update the size of the grid based on its container's current size.
          */
@@ -2527,20 +2536,34 @@ nf.SummaryTable = (function () {
         },
         
         /**
-         * Load the processor status table.
+         * Load the summary table.
          */
-        loadProcessorSummaryTable: function () {
+        loadSummaryTable: function () {
+            var statusUri = config.urls.status;
+
+            // add the parameter if appropriate
+            var parameters = {};
+            if (!nf.Common.isNull(clusterNodeId)) {
+                parameters['clusterNodeId'] = clusterNodeId;
+            }
+
+            // update the status uri if appropriate
+            if (!$.isEmptyObject(parameters)) {
+                statusUri += '?' + $.param(parameters);
+            }
+
             return $.ajax({
                 type: 'GET',
-                url: nf.SummaryTable.url,
+                url: statusUri,
                 data: {
                     recursive: true
                 },
                 dataType: 'json'
             }).done(function (response) {
                 var processGroupStatus = response.processGroupStatus;
+                var aggregateStatus = processGroupStatus.aggregateStatus;
 
-                if (nf.Common.isDefinedAndNotNull(processGroupStatus)) {
+                if (nf.Common.isDefinedAndNotNull(aggregateStatus)) {
                     // remove any tooltips from the processor table
                     var processorsGridElement = $('#processor-summary-table');
                     nf.Common.cleanUpTooltips(processorsGridElement, 'img.has-bulletins');
@@ -2593,7 +2616,7 @@ nf.SummaryTable = (function () {
                     var remoteProcessGroupItems = [];
 
                     // populate the tables
-                    populateProcessGroupStatus(processorItems, connectionItems, processGroupItems, inputPortItems, outputPortItems, remoteProcessGroupItems, processGroupStatus);
+                    populateProcessGroupStatus(processorItems, connectionItems, processGroupItems, inputPortItems, outputPortItems, remoteProcessGroupItems, aggregateStatus);
 
                     // update the processors
                     processorsData.setItems(processorItems);
@@ -2626,7 +2649,7 @@ nf.SummaryTable = (function () {
                     remoteProcessGroupsGrid.invalidate();
 
                     // update the stats last refreshed timestamp
-                    $('#summary-last-refreshed').text(processGroupStatus.statsLastRefreshed);
+                    $('#summary-last-refreshed').text(aggregateStatus.statsLastRefreshed);
 
                     // update the total number of processors
                     if ($('#processor-summary-table').is(':visible')) {

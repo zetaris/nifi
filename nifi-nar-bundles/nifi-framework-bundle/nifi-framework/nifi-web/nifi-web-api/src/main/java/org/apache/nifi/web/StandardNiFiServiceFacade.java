@@ -16,25 +16,6 @@
  */
 package org.apache.nifi.web;
 
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.ListIterator;
-import java.util.Map;
-import java.util.Set;
-import java.util.TimeZone;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-
-import javax.ws.rs.WebApplicationException;
-
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.action.Action;
@@ -74,9 +55,7 @@ import org.apache.nifi.controller.repository.claim.ContentDirection;
 import org.apache.nifi.controller.service.ControllerServiceNode;
 import org.apache.nifi.controller.service.ControllerServiceReference;
 import org.apache.nifi.controller.service.ControllerServiceState;
-import org.apache.nifi.controller.status.PortStatus;
 import org.apache.nifi.controller.status.ProcessGroupStatus;
-import org.apache.nifi.controller.status.RemoteProcessGroupStatus;
 import org.apache.nifi.diagnostics.SystemDiagnostics;
 import org.apache.nifi.groups.ProcessGroup;
 import org.apache.nifi.groups.ProcessGroupCounts;
@@ -141,11 +120,9 @@ import org.apache.nifi.web.api.dto.provenance.ProvenanceEventDTO;
 import org.apache.nifi.web.api.dto.provenance.ProvenanceOptionsDTO;
 import org.apache.nifi.web.api.dto.provenance.lineage.LineageDTO;
 import org.apache.nifi.web.api.dto.search.SearchResultsDTO;
-import org.apache.nifi.web.api.dto.status.ClusterPortStatusDTO;
 import org.apache.nifi.web.api.dto.status.ClusterStatusDTO;
 import org.apache.nifi.web.api.dto.status.ConnectionStatusDTO;
 import org.apache.nifi.web.api.dto.status.ControllerStatusDTO;
-import org.apache.nifi.web.api.dto.status.NodePortStatusDTO;
 import org.apache.nifi.web.api.dto.status.NodeStatusDTO;
 import org.apache.nifi.web.api.dto.status.PortStatusDTO;
 import org.apache.nifi.web.api.dto.status.ProcessGroupStatusDTO;
@@ -170,6 +147,24 @@ import org.apache.nifi.web.util.SnippetUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
+
+import javax.ws.rs.WebApplicationException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Map;
+import java.util.Set;
+import java.util.TimeZone;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Implementation of NiFiServiceFacade that performs revision checking.
@@ -2885,209 +2880,6 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
 
         final String userDn = user.getIdentity();
         clusterManager.deleteNode(nodeId, userDn);
-    }
-
-    private PortStatus findNodeInputPortStatus(final ProcessGroupStatus groupStatus, final String inputPortId) {
-        PortStatus portStatus = null;
-
-        for (final PortStatus status : groupStatus.getInputPortStatus()) {
-            if (inputPortId.equals(status.getId())) {
-                portStatus = status;
-                break;
-            }
-        }
-
-        if (portStatus == null) {
-            for (final ProcessGroupStatus status : groupStatus.getProcessGroupStatus()) {
-                portStatus = findNodeInputPortStatus(status, inputPortId);
-
-                if (portStatus != null) {
-                    break;
-                }
-            }
-        }
-
-        return portStatus;
-    }
-
-    @Override
-    public ClusterPortStatusDTO getClusterInputPortStatus(String inputPortId) {
-        final ClusterPortStatusDTO clusterInputPortStatusDto = new ClusterPortStatusDTO();
-        clusterInputPortStatusDto.setNodePortStatus(new ArrayList<NodePortStatusDTO>());
-
-        // set the current time
-        clusterInputPortStatusDto.setStatsLastRefreshed(new Date());
-
-        final Set<Node> nodes = clusterManager.getNodes(Node.Status.CONNECTED);
-        boolean firstNode = true;
-        for (final Node node : nodes) {
-
-            final HeartbeatPayload nodeHeartbeatPayload = node.getHeartbeatPayload();
-            if (nodeHeartbeatPayload == null) {
-                continue;
-            }
-
-            final ProcessGroupStatus nodeStats = nodeHeartbeatPayload.getProcessGroupStatus();
-            if (nodeStats == null || nodeStats.getProcessorStatus() == null) {
-                continue;
-            }
-
-            // find the input status for this node
-            final PortStatus inputPortStatus = findNodeInputPortStatus(nodeStats, inputPortId);
-
-            // sanity check that we have status for this input port
-            if (inputPortStatus == null) {
-                throw new ResourceNotFoundException(String.format("Unable to find status for input port id '%s'.", inputPortId));
-            }
-
-            if (firstNode) {
-                clusterInputPortStatusDto.setPortId(inputPortId);
-                clusterInputPortStatusDto.setPortName(inputPortStatus.getName());
-                firstNode = false;
-            }
-
-            // create node port status dto
-            final NodePortStatusDTO nodeInputPortStatusDTO = new NodePortStatusDTO();
-            clusterInputPortStatusDto.getNodePortStatus().add(nodeInputPortStatusDTO);
-
-            // populate node input port status dto
-            final String nodeId = node.getNodeId().getId();
-            nodeInputPortStatusDTO.setNode(dtoFactory.createNodeDTO(node, clusterManager.getNodeEvents(nodeId), isPrimaryNode(nodeId)));
-            nodeInputPortStatusDTO.setPortStatus(dtoFactory.createPortStatusDto(inputPortStatus));
-        }
-
-        return clusterInputPortStatusDto;
-    }
-
-    private PortStatus findNodeOutputPortStatus(final ProcessGroupStatus groupStatus, final String outputPortId) {
-        PortStatus portStatus = null;
-
-        for (final PortStatus status : groupStatus.getOutputPortStatus()) {
-            if (outputPortId.equals(status.getId())) {
-                portStatus = status;
-                break;
-            }
-        }
-
-        if (portStatus == null) {
-            for (final ProcessGroupStatus status : groupStatus.getProcessGroupStatus()) {
-                portStatus = findNodeOutputPortStatus(status, outputPortId);
-
-                if (portStatus != null) {
-                    break;
-                }
-            }
-        }
-
-        return portStatus;
-    }
-
-    @Override
-    public ClusterPortStatusDTO getClusterOutputPortStatus(String outputPortId) {
-        final ClusterPortStatusDTO clusterOutputPortStatusDto = new ClusterPortStatusDTO();
-        clusterOutputPortStatusDto.setNodePortStatus(new ArrayList<NodePortStatusDTO>());
-
-        // set the current time
-        clusterOutputPortStatusDto.setStatsLastRefreshed(new Date());
-
-        final Set<Node> nodes = clusterManager.getNodes(Node.Status.CONNECTED);
-        boolean firstNode = true;
-        for (final Node node : nodes) {
-
-            final HeartbeatPayload nodeHeartbeatPayload = node.getHeartbeatPayload();
-            if (nodeHeartbeatPayload == null) {
-                continue;
-            }
-
-            final ProcessGroupStatus nodeStats = nodeHeartbeatPayload.getProcessGroupStatus();
-            if (nodeStats == null || nodeStats.getProcessorStatus() == null) {
-                continue;
-            }
-
-            // find the output status for this node
-            final PortStatus outputPortStatus = findNodeOutputPortStatus(nodeStats, outputPortId);
-
-            // sanity check that we have status for this output port
-            if (outputPortStatus == null) {
-                throw new ResourceNotFoundException(String.format("Unable to find status for output port id '%s'.", outputPortId));
-            }
-
-            if (firstNode) {
-                clusterOutputPortStatusDto.setPortId(outputPortId);
-                clusterOutputPortStatusDto.setPortName(outputPortStatus.getName());
-                firstNode = false;
-            }
-
-            // create node port status dto
-            final NodePortStatusDTO nodeOutputPortStatusDTO = new NodePortStatusDTO();
-            clusterOutputPortStatusDto.getNodePortStatus().add(nodeOutputPortStatusDTO);
-
-            // populate node output port status dto
-            final String nodeId = node.getNodeId().getId();
-            nodeOutputPortStatusDTO.setNode(dtoFactory.createNodeDTO(node, clusterManager.getNodeEvents(nodeId), isPrimaryNode(nodeId)));
-            nodeOutputPortStatusDTO.setPortStatus(dtoFactory.createPortStatusDto(outputPortStatus));
-        }
-
-        return clusterOutputPortStatusDto;
-    }
-
-    private RemoteProcessGroupStatus findNodeRemoteProcessGroupStatus(final ProcessGroupStatus groupStatus, final String remoteProcessGroupId) {
-        RemoteProcessGroupStatus remoteProcessGroupStatus = null;
-
-        for (final RemoteProcessGroupStatus status : groupStatus.getRemoteProcessGroupStatus()) {
-            if (remoteProcessGroupId.equals(status.getId())) {
-                remoteProcessGroupStatus = status;
-                break;
-            }
-        }
-
-        if (remoteProcessGroupStatus == null) {
-            for (final ProcessGroupStatus status : groupStatus.getProcessGroupStatus()) {
-                remoteProcessGroupStatus = findNodeRemoteProcessGroupStatus(status, remoteProcessGroupId);
-
-                if (remoteProcessGroupStatus != null) {
-                    break;
-                }
-            }
-        }
-
-        return remoteProcessGroupStatus;
-    }
-
-
-
-    @Override
-    public NodeStatusDTO getNodeStatus(String nodeId) {
-        // find the node in question
-        final Node node = clusterManager.getNode(nodeId);
-
-        // verify node state
-        if (node == null) {
-            throw new UnknownNodeException("Node does not exist.");
-        } else if (Node.Status.CONNECTED != node.getStatus()) {
-            throw new IllegalClusterStateException(
-                    String.format("Node '%s:%s' is not connected to the cluster.",
-                            node.getNodeId().getApiAddress(), node.getNodeId().getApiPort()));
-        }
-
-        // get the node's last heartbeat
-        final NodeStatusDTO nodeStatus = new NodeStatusDTO();
-        final HeartbeatPayload nodeHeartbeatPayload = node.getHeartbeatPayload();
-        if (nodeHeartbeatPayload == null) {
-            return nodeStatus;
-        }
-
-        // get the node status
-        final ProcessGroupStatus nodeProcessGroupStatus = nodeHeartbeatPayload.getProcessGroupStatus();
-        if (nodeProcessGroupStatus == null) {
-            return nodeStatus;
-        }
-
-        final ProcessGroupStatusDTO nodeProcessGroupStatusDto = dtoFactory.createProcessGroupStatusDto(clusterManager.getBulletinRepository(), nodeProcessGroupStatus);
-        nodeStatus.setControllerStatus(nodeProcessGroupStatusDto);
-        nodeStatus.setNode(dtoFactory.createNodeDTO(node, clusterManager.getNodeEvents(nodeId), isPrimaryNode(nodeId)));
-
-        return nodeStatus;
     }
 
     @Override

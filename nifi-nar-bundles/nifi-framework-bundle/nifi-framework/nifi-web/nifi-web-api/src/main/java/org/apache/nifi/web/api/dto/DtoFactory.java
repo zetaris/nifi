@@ -165,8 +165,6 @@ public final class DtoFactory {
         }
     };
 
-    final static int MAX_BULLETINS_PER_COMPONENT = 5;
-
     private ControllerServiceLookup controllerServiceLookup;
 
     /**
@@ -725,6 +723,11 @@ public final class DtoFactory {
         final RemoteProcessGroupStatusSnapshotDTO snapshot = new RemoteProcessGroupStatusSnapshotDTO();
         dto.setAggregateStatus(snapshot);
 
+        snapshot.setId(remoteProcessGroupStatus.getId());
+        snapshot.setGroupId(remoteProcessGroupStatus.getGroupId());
+        snapshot.setTargetUri(remoteProcessGroupStatus.getTargetUri());
+        snapshot.setTransmissionStatus(remoteProcessGroupStatus.getTransmissionStatus().toString());
+
         snapshot.setActiveThreadCount(remoteProcessGroupStatus.getActiveThreadCount());
         snapshot.setFlowFilesSent(remoteProcessGroupStatus.getSentCount());
         snapshot.setBytesSent(remoteProcessGroupStatus.getSentContentSize());
@@ -744,7 +747,12 @@ public final class DtoFactory {
         final ProcessGroupStatusSnapshotDTO snapshot = new ProcessGroupStatusSnapshotDTO();
         processGroupStatusDto.setAggregateStatus(snapshot);
 
+        snapshot.setId(processGroupStatus.getId());
+        snapshot.setName(processGroupStatus.getName());
+
         snapshot.setStatsLastRefreshed(new Date(processGroupStatus.getCreationTimestamp()));
+        snapshot.setFlowFilesQueued(processGroupStatus.getQueuedCount());
+        snapshot.setBytesQueued(processGroupStatus.getQueuedContentSize());
         snapshot.setBytesRead(processGroupStatus.getBytesRead());
         snapshot.setBytesWritten(processGroupStatus.getBytesWritten());
         snapshot.setFlowFilesIn(processGroupStatus.getInputCount());
@@ -842,6 +850,12 @@ public final class DtoFactory {
         final ConnectionStatusSnapshotDTO snapshot = new ConnectionStatusSnapshotDTO();
         connectionStatusDto.setAggregateSnapshot(snapshot);
 
+        snapshot.setId(connectionStatus.getId());
+        snapshot.setGroupId(connectionStatus.getGroupId());
+        snapshot.setName(connectionStatus.getName());
+        snapshot.setSourceName(connectionStatus.getSourceName());
+        snapshot.setDestinationName(connectionStatus.getDestinationName());
+
         snapshot.setFlowFilesQueued(connectionStatus.getQueuedCount());
         snapshot.setBytesQueued(connectionStatus.getQueuedBytes());
 
@@ -863,6 +877,10 @@ public final class DtoFactory {
 
         final ProcessorStatusSnapshotDTO snapshot = new ProcessorStatusSnapshotDTO();
         dto.setAggregateStatus(snapshot);
+
+        snapshot.setId(procStatus.getId());
+        snapshot.setGroupId(procStatus.getGroupId());
+        snapshot.setName(procStatus.getName());
 
         snapshot.setFlowFilesOut(procStatus.getOutputCount());
         snapshot.setBytesOut(procStatus.getOutputBytes());
@@ -902,6 +920,11 @@ public final class DtoFactory {
 
         final PortStatusSnapshotDTO snapshot = new PortStatusSnapshotDTO();
         dto.setAggregateStatus(snapshot);
+
+        snapshot.setId(portStatus.getId());
+        snapshot.setGroupId(portStatus.getGroupId());
+        snapshot.setName(portStatus.getName());
+        snapshot.setRunStatus(portStatus.getRunStatus().toString());
 
         snapshot.setActiveThreadCount(portStatus.getActiveThreadCount());
         snapshot.setFlowFilesOut(portStatus.getOutputCount());

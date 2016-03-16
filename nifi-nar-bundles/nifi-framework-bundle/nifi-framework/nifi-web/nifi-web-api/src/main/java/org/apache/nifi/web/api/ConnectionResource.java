@@ -310,25 +310,59 @@ public class ConnectionResource extends ApplicationResource {
             @ApiResponse(code = 409, message = "The request was valid but NiFi was not in the appropriate state to process it. Retrying the same request later may be successful.")
         }
     )
-    public Response getProcessorStatus(
+    public Response getConnectionStatus(
         @ApiParam(
             value = "If the client id is not specified, new one will be generated. This value (whether specified or generated) is included in the response.",
             required = false
         )
         @QueryParam(CLIENT_ID) @DefaultValue(StringUtils.EMPTY) ClientIdParameter clientId,
         @ApiParam(
+            value = "Whether or not to include the breakdown per node. Optional, defaults to false",
+            required = false
+        )
+        @QueryParam("nodewise") @DefaultValue(NODEWISE) Boolean nodewise,
+        @ApiParam(
+            value = "The id of the node where to get the status.",
+            required = false
+        )
+        @QueryParam("clusterNodeId") String clusterNodeId,
+        @ApiParam(
             value = "The connection id.",
             required = true
         )
         @PathParam("id") String id) {
 
-        // replicate if cluster manager
+        // ensure a valid request
+        if (Boolean.TRUE.equals(nodewise) && clusterNodeId != null) {
+            throw new IllegalArgumentException("Nodewise requests cannot be directed at a specific node.");
+        }
+
         if (properties.isClusterManager()) {
-            return clusterManager.applyRequest(HttpMethod.GET, getAbsolutePath(), getRequestParameters(true), getHeaders()).getResponse();
+            // determine where this request should be sent
+            if (clusterNodeId == null) {
+                return clusterManager.applyRequest(HttpMethod.GET, getAbsolutePath(), getRequestParameters(true), getHeaders()).getResponse();
+            } else {
+                // get the target node and ensure it exists
+                final Node targetNode = clusterManager.getNode(clusterNodeId);
+                if (targetNode == null) {
+                    throw new UnknownNodeException("The specified cluster node does not exist.");
+                }
+
+                final Set<NodeIdentifier> targetNodes = new HashSet<>();
+                targetNodes.add(targetNode.getNodeId());
+
+                // replicate the request to the specific node
+                return clusterManager.applyRequest(HttpMethod.GET, getAbsolutePath(), getRequestParameters(true), getHeaders(), targetNodes).getResponse();
+            }
         }
 
         // get the specified connection status
         final ConnectionStatusDTO connectionStatus = serviceFacade.getConnectionStatus(groupId, id);
+
+        // prune the response as necessary
+        if (!nodewise) {
+            connectionStatus.setNodeStatuses(null);
+        }
 
         // create the revision
         final RevisionDTO revision = new RevisionDTO();

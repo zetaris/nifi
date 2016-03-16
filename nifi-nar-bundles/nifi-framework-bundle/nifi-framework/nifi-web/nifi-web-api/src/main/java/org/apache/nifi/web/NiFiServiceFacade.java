@@ -16,10 +16,6 @@
  */
 package org.apache.nifi.web;
 
-import java.util.Collection;
-import java.util.Date;
-import java.util.Set;
-
 import org.apache.nifi.controller.ScheduledState;
 import org.apache.nifi.controller.repository.claim.ContentDirection;
 import org.apache.nifi.controller.service.ControllerServiceState;
@@ -65,16 +61,18 @@ import org.apache.nifi.web.api.dto.provenance.ProvenanceEventDTO;
 import org.apache.nifi.web.api.dto.provenance.ProvenanceOptionsDTO;
 import org.apache.nifi.web.api.dto.provenance.lineage.LineageDTO;
 import org.apache.nifi.web.api.dto.search.SearchResultsDTO;
-import org.apache.nifi.web.api.dto.status.ClusterPortStatusDTO;
 import org.apache.nifi.web.api.dto.status.ClusterStatusDTO;
 import org.apache.nifi.web.api.dto.status.ConnectionStatusDTO;
 import org.apache.nifi.web.api.dto.status.ControllerStatusDTO;
-import org.apache.nifi.web.api.dto.status.NodeStatusDTO;
 import org.apache.nifi.web.api.dto.status.PortStatusDTO;
 import org.apache.nifi.web.api.dto.status.ProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.ProcessorStatusDTO;
 import org.apache.nifi.web.api.dto.status.RemoteProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.StatusHistoryDTO;
+
+import java.util.Collection;
+import java.util.Date;
+import java.util.Set;
 
 /**
  * Defines the NiFiServiceFacade interface.
@@ -1552,14 +1550,6 @@ public interface NiFiServiceFacade {
     void deleteNode(String nodeId);
 
     /**
-     * Returns the status the specified node id.
-     *
-     * @param nodeId The id of the desired node
-     * @return The node status
-     */
-    NodeStatusDTO getNodeStatus(String nodeId);
-
-    /**
      * Returns the system diagnostics for the specified node id.
      *
      * @param nodeId The id of the desired node
@@ -1573,22 +1563,6 @@ public interface NiFiServiceFacade {
      * @return The cluster status
      */
     ClusterStatusDTO getClusterStatus();
-
-    /**
-     * Returns an input port's status for each node connected to the cluster.
-     *
-     * @param inputPortId a port identifier
-     * @return The cluster port status transfer object.
-     */
-    ClusterPortStatusDTO getClusterInputPortStatus(String inputPortId);
-
-    /**
-     * Returns an output port's status for each node connected to the cluster.
-     *
-     * @param outputPortId a port identifier
-     * @return The cluster port status transfer object.
-     */
-    ClusterPortStatusDTO getClusterOutputPortStatus(String outputPortId);
 
     // ----------------------------------------
     // BulletinBoard methods

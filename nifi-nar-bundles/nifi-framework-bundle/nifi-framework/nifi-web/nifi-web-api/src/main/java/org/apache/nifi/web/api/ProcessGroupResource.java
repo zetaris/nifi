@@ -19,6 +19,7 @@ package org.apache.nifi.web.api;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -42,7 +43,10 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.nifi.cluster.manager.exception.UnknownNodeException;
 import org.apache.nifi.cluster.manager.impl.WebClusterManager;
+import org.apache.nifi.cluster.node.Node;
+import org.apache.nifi.cluster.protocol.NodeIdentifier;
 import org.apache.nifi.util.NiFiProperties;
 import org.apache.nifi.web.ConfigurationSnapshot;
 import org.apache.nifi.web.NiFiServiceFacade;
@@ -1254,7 +1258,7 @@ public class ProcessGroupResource extends ApplicationResource {
      * Retrieves the status report for this NiFi.
      *
      * @param clientId Optional client id. If the client id is not specified, a new one will be generated. This value (whether specified or generated) is included in the response.
-     * @param recursive Optional recursive flag that defaults to false. If set to true, all descendent groups and their content will be included if the verbose flag is also set to true.
+     * @param recursive Optional recursive flag that defaults to false. If set to true, all descendant groups and the status of their content will be included.
      * @return A processGroupStatusEntity.
      */
     @GET
@@ -1284,21 +1288,66 @@ public class ProcessGroupResource extends ApplicationResource {
             }
     )
     public Response getProcessGroupStatus(
+            @ApiParam(
+                value = "If the client id is not specified, new one will be generated. This value (whether specified or generated) is included in the response.",
+                required = false
+            )
             @QueryParam(CLIENT_ID) @DefaultValue(StringUtils.EMPTY) ClientIdParameter clientId,
-            @QueryParam("recursive") @DefaultValue(RECURSIVE) Boolean recursive) {
+            @ApiParam(
+                value = "Whether all descendant groups and the status of their content will be included. Optional, defaults to false",
+                required = false
+            )
+            @QueryParam("recursive") @DefaultValue(RECURSIVE) Boolean recursive,
+            @ApiParam(
+                value = "Whether or not to include the breakdown per node. Optional, defaults to false",
+                required = false
+            )
+            @QueryParam("nodewise") @DefaultValue(NODEWISE) Boolean nodewise,
+            @ApiParam(
+                value = "The id of the node where to get the status.",
+                required = false
+            )
+            @QueryParam("clusterNodeId") String clusterNodeId) {
+
+        // ensure a valid request
+        if (Boolean.TRUE.equals(nodewise) && clusterNodeId != null) {
+            throw new IllegalArgumentException("Nodewise requests cannot be directed at a specific node.");
+        }
 
         if (properties.isClusterManager()) {
-            return clusterManager.applyRequest(HttpMethod.GET, getAbsolutePath(), getRequestParameters(true), getHeaders()).getResponse();
+            // determine where this request should be sent
+            if (clusterNodeId == null) {
+                return clusterManager.applyRequest(HttpMethod.GET, getAbsolutePath(), getRequestParameters(true), getHeaders()).getResponse();
+            } else {
+                // get the target node and ensure it exists
+                final Node targetNode = clusterManager.getNode(clusterNodeId);
+                if (targetNode == null) {
+                    throw new UnknownNodeException("The specified cluster node does not exist.");
+                }
+
+                final Set<NodeIdentifier> targetNodes = new HashSet<>();
+                targetNodes.add(targetNode.getNodeId());
+
+                // replicate the request to the specific node
+                return clusterManager.applyRequest(HttpMethod.GET, getAbsolutePath(), getRequestParameters(true), getHeaders(), targetNodes).getResponse();
+            }
         }
 
         // get the status
         final ProcessGroupStatusDTO statusReport = serviceFacade.getProcessGroupStatus(groupId);
 
         // prune the response as necessary
+        if (!nodewise) {
+            statusReport.setNodeStatuses(null);
+        }
+
+        // prune the response as necessary
         if (!recursive) {
             prune(statusReport.getAggregateStatus());
-            for (final NodeProcessGroupStatusSnapshotDTO nodeSnapshot : statusReport.getNodeStatuses()) {
-                prune(nodeSnapshot.getStatusSnapshot());
+            if (statusReport.getNodeStatuses() != null) {
+                for (final NodeProcessGroupStatusSnapshotDTO nodeSnapshot : statusReport.getNodeStatuses()) {
+                    prune(nodeSnapshot.getStatusSnapshot());
+                }
             }
         }
 
@@ -1316,12 +1365,14 @@ public class ProcessGroupResource extends ApplicationResource {
     }
 
     private void prune(final ProcessGroupStatusSnapshotDTO snapshot) {
-        snapshot.setConnectionStatusSnapshots(null);
-        snapshot.setProcessGroupStatusSnapshots(null);
-        snapshot.setInputPortStatusSnapshots(null);
-        snapshot.setOutputPortStatusSnapshots(null);
-        snapshot.setProcessorStatusSnapshots(null);
-        snapshot.setRemoteProcessGroupStatusSnapshots(null);
+        for (final ProcessGroupStatusSnapshotDTO childProcessGroupStatus : snapshot.getProcessGroupStatusSnapshots()) {
+            childProcessGroupStatus.setConnectionStatusSnapshots(null);
+            childProcessGroupStatus.setProcessGroupStatusSnapshots(null);
+            childProcessGroupStatus.setInputPortStatusSnapshots(null);
+            childProcessGroupStatus.setOutputPortStatusSnapshots(null);
+            childProcessGroupStatus.setProcessorStatusSnapshots(null);
+            childProcessGroupStatus.setRemoteProcessGroupStatusSnapshots(null);
+        }
     }
 
     /**

@@ -844,12 +844,13 @@ nf.Canvas = (function () {
                 // report the updated stats
                 if (nf.Common.isDefinedAndNotNull(response.processGroupStatus)) {
                     var processGroupStatus = response.processGroupStatus;
+                    var aggregateStatus = processGroupStatus.aggregateStatus;
 
                     // update all the stats
-                    nf.Graph.setStatus(processGroupStatus);
+                    nf.Graph.setStatus(aggregateStatus);
 
                     // update the timestamp
-                    $('#stats-last-refreshed').text(processGroupStatus.statsLastRefreshed);
+                    $('#stats-last-refreshed').text(aggregateStatus.statsLastRefreshed);
                 }
                 deferred.resolve();
             }).fail(function (xhr, status, error) {
