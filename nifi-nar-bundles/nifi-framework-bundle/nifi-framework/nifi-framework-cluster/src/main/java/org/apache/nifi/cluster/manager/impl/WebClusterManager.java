@@ -200,6 +200,7 @@ import org.apache.nifi.web.api.dto.BulletinDTO;
 import org.apache.nifi.web.api.dto.ComponentStateDTO;
 import org.apache.nifi.web.api.dto.ControllerServiceDTO;
 import org.apache.nifi.web.api.dto.ControllerServiceReferencingComponentDTO;
+import org.apache.nifi.web.api.dto.CountersDTO;
 import org.apache.nifi.web.api.dto.DropRequestDTO;
 import org.apache.nifi.web.api.dto.FlowFileSummaryDTO;
 import org.apache.nifi.web.api.dto.FlowSnippetDTO;
@@ -234,6 +235,7 @@ import org.apache.nifi.web.api.entity.ControllerServiceEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceReferencingComponentsEntity;
 import org.apache.nifi.web.api.entity.ControllerServicesEntity;
 import org.apache.nifi.web.api.entity.ControllerStatusEntity;
+import org.apache.nifi.web.api.entity.CountersEntity;
 import org.apache.nifi.web.api.entity.DropRequestEntity;
 import org.apache.nifi.web.api.entity.FlowSnippetEntity;
 import org.apache.nifi.web.api.entity.ListingRequestEntity;
@@ -337,7 +339,6 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
     public static final Pattern PROVENANCE_QUERY_URI = Pattern.compile("/nifi-api/controller/provenance/[a-f0-9\\-]{36}");
     public static final Pattern PROVENANCE_EVENT_URI = Pattern.compile("/nifi-api/controller/provenance/events/[0-9]+");
 
-    public static final Pattern COUNTERS_URI = Pattern.compile("/nifi-api/controller/counters/[a-f0-9\\-]{36}");
     public static final String CONTROLLER_SERVICES_URI = "/nifi-api/controller/controller-services/node";
     public static final Pattern CONTROLLER_SERVICE_URI_PATTERN = Pattern.compile("/nifi-api/controller/controller-services/node/[a-f0-9\\-]{36}");
     public static final Pattern CONTROLLER_SERVICE_STATE_URI_PATTERN = Pattern.compile("/nifi-api/controller/controller-services/node/[a-f0-9\\-]{36}/state");
@@ -347,6 +348,8 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
     public static final Pattern REPORTING_TASK_STATE_URI_PATTERN = Pattern.compile("/nifi-api/controller/reporting-tasks/node/[a-f0-9\\-]{36}/state");
     public static final Pattern BULLETIN_BOARD_URI_PATTERN = Pattern.compile("/nifi-api/controller/bulletin-board");
     public static final Pattern SYSTEM_DIAGNOSTICS_URI_PATTERN = Pattern.compile("/nifi-api/system-diagnostics");
+    public static final Pattern COUNTERS_URI_PATTERN = Pattern.compile("/nifi-api/controller/counters");
+    public static final Pattern COUNTER_URI_PATTERN = Pattern.compile("/nifi-api/controller/counters/[a-f0-9\\-]{36}");
 
     public static final Pattern PROCESSOR_STATUS_HISTORY_URI_PATTERN =
         Pattern.compile("/nifi-api/controller/process-groups/(?:(?:root)|(?:[a-f0-9\\-]{36}))/processors/[a-f0-9\\-]{36}/status/history");
@@ -2469,6 +2472,10 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
         return "GET".equalsIgnoreCase(method) && SYSTEM_DIAGNOSTICS_URI_PATTERN.matcher(uri.getPath()).matches();
     }
 
+    private static boolean isCountersEndpoint(final URI uri, final String method) {
+        return "GET".equalsIgnoreCase(method) && COUNTERS_URI_PATTERN.matcher(uri.getPath()).matches();
+    }
+
 
     private static boolean isRemoteProcessGroupEndpoint(final URI uri, final String method) {
         if (("GET".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method)) && REMOTE_PROCESS_GROUP_URI_PATTERN.matcher(uri.getPath()).matches()) {
@@ -2503,8 +2510,8 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
         return false;
     }
 
-    private static boolean isCountersEndpoint(final URI uri) {
-        return COUNTERS_URI.matcher(uri.getPath()).matches();
+    private static boolean isCounterEndpoint(final URI uri) {
+        return COUNTER_URI_PATTERN.matcher(uri.getPath()).matches();
     }
 
     private static boolean isControllerServicesEndpoint(final URI uri, final String method) {
@@ -2576,7 +2583,8 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
                 || isGroupStatusEndpoint(uri, method) || isProcessorStatusEndpoint(uri, method) || isControllerStatusEndpoint(uri, method)
                 || isProcessorStatusHistoryEndpoint(uri, method) || isProcessGroupStatusHistoryEndpoint(uri, method)
                 || isRemoteProcessGroupStatusHistoryEndpoint(uri, method) || isConnectionStatusHistoryEndpoint(uri, method)
-                || isBulletinBoardEndpoint(uri, method) || isSystemDiagnosticsEndpoint(uri, method);
+                || isBulletinBoardEndpoint(uri, method) || isSystemDiagnosticsEndpoint(uri, method)
+                || isCountersEndpoint(uri, method);
     }
 
     private void mergeProcessorValidationErrors(final ProcessorDTO processor, Map<NodeIdentifier, ProcessorDTO> processorMap) {
@@ -2633,6 +2641,15 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
         for (final Map.Entry<NodeIdentifier, SystemDiagnosticsDTO> entry : resultMap.entrySet()) {
             final NodeIdentifier nodeId = entry.getKey();
             final SystemDiagnosticsDTO toMerge = entry.getValue();
+
+            StatusMerger.merge(target, toMerge, nodeId.getId(), nodeId.getApiAddress(), nodeId.getApiPort());
+        }
+    }
+
+    private void mergeCounters(final CountersDTO target, final Map<NodeIdentifier, CountersDTO> resultMap) {
+        for (final Map.Entry<NodeIdentifier, CountersDTO> entry : resultMap.entrySet()) {
+            final NodeIdentifier nodeId = entry.getKey();
+            final CountersDTO toMerge = entry.getValue();
 
             StatusMerger.merge(target, toMerge, nodeId.getId(), nodeId.getApiAddress(), nodeId.getApiPort());
         }
@@ -3870,6 +3887,24 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
             mergeSystemDiagnostics(responseDto, resultsMap);
 
             clientResponse = new NodeResponse(clientResponse, responseEntity);
+        } else if (hasSuccessfulClientResponse && isCountersEndpoint(uri, method)) {
+            final CountersEntity responseEntity = clientResponse.getClientResponse().getEntity(CountersEntity.class);
+            final CountersDTO responseDto = responseEntity.getCounters();
+
+            final Map<NodeIdentifier, CountersDTO> resultsMap = new HashMap<>();
+            for (final NodeResponse nodeResponse : updatedNodesMap.values()) {
+                if (problematicNodeResponses.contains(nodeResponse)) {
+                    continue;
+                }
+
+                final CountersEntity nodeResponseEntity = nodeResponse == clientResponse ? responseEntity : nodeResponse.getClientResponse().getEntity(CountersEntity.class);
+                final CountersDTO nodeStatus = nodeResponseEntity.getCounters();
+
+                resultsMap.put(nodeResponse.getNodeId(), nodeStatus);
+            }
+            mergeCounters(responseDto, resultsMap);
+
+            clientResponse = new NodeResponse(clientResponse, responseEntity);
         } else {
             if (!nodeResponsesToDrain.isEmpty()) {
                 drainResponses(nodeResponsesToDrain);
@@ -3980,7 +4015,7 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
      * @return Whether all problematic node responses were due to a missing counter
      */
     private boolean isMissingCounter(final Set<NodeResponse> problematicNodeResponses, final URI uri) {
-        if (isCountersEndpoint(uri)) {
+        if (isCounterEndpoint(uri)) {
             boolean notFound = true;
             for (final NodeResponse problematicResponse : problematicNodeResponses) {
                 if (problematicResponse.getStatus() != 404) {

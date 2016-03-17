@@ -30,6 +30,10 @@ import org.apache.nifi.controller.status.RunStatus;
 import org.apache.nifi.controller.status.TransmissionStatus;
 import org.apache.nifi.util.FormatUtils;
 import org.apache.nifi.web.api.dto.BulletinDTO;
+import org.apache.nifi.web.api.dto.CounterDTO;
+import org.apache.nifi.web.api.dto.CountersDTO;
+import org.apache.nifi.web.api.dto.CountersSnapshotDTO;
+import org.apache.nifi.web.api.dto.NodeCountersSnapshotDTO;
 import org.apache.nifi.web.api.dto.NodeSystemDiagnosticsSnapshotDTO;
 import org.apache.nifi.web.api.dto.SystemDiagnosticsDTO;
 import org.apache.nifi.web.api.dto.SystemDiagnosticsSnapshotDTO;
@@ -520,6 +524,49 @@ public class StatusMerger {
 
     public static void updatePrettyPrintedFields(final GarbageCollectionDTO target) {
         target.setCollectionTime(FormatUtils.formatHoursMinutesSeconds(target.getCollectionMillis(), TimeUnit.MILLISECONDS));
+    }
+
+    public static void merge(final CountersDTO target, final CountersDTO toMerge, final String nodeId, final String nodeAddress, final Integer nodeApiPort) {
+        merge(target.getAggregateSnapshot(), toMerge.getAggregateSnapshot());
+
+        List<NodeCountersSnapshotDTO> nodeSnapshots = target.getNodeSnapshots();
+        if (nodeSnapshots == null) {
+            nodeSnapshots = new ArrayList<>();
+        }
+
+        final NodeCountersSnapshotDTO nodeCountersSnapshot = new NodeCountersSnapshotDTO();
+        nodeCountersSnapshot.setNodeId(nodeId);
+        nodeCountersSnapshot.setAddress(nodeAddress);
+        nodeCountersSnapshot.setApiPort(nodeApiPort);
+        nodeCountersSnapshot.setSnapshot(toMerge.getAggregateSnapshot());
+
+        nodeSnapshots.add(nodeCountersSnapshot);
+
+        target.setNodeSnapshots(nodeSnapshots);
+    }
+
+    public static void merge(final CountersSnapshotDTO target, final CountersSnapshotDTO toMerge) {
+        final Map<String, CounterDTO> counters = new HashMap<>();
+
+        for (final CounterDTO counter : target.getCounters()) {
+            counters.put(counter.getId(), counter);
+        }
+
+        for (final CounterDTO counter : toMerge.getCounters()) {
+            final CounterDTO existing = counters.get(counter.getId());
+            if (existing == null) {
+                counters.put(counter.getId(), counter);
+            } else {
+                merge(existing, counter);
+            }
+        }
+
+        target.setCounters(counters.values());
+    }
+
+    public static void merge(final CounterDTO target, final CounterDTO toMerge) {
+        target.setValueCount(target.getValueCount() + toMerge.getValueCount());
+        target.setValue(FormatUtils.formatCount(target.getValueCount()));
     }
 
 

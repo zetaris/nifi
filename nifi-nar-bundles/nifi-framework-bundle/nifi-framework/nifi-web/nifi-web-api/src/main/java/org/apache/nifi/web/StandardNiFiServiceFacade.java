@@ -49,7 +49,6 @@ import org.apache.nifi.authorization.Authority;
 import org.apache.nifi.cluster.HeartbeatPayload;
 import org.apache.nifi.cluster.context.ClusterContext;
 import org.apache.nifi.cluster.context.ClusterContextThreadLocal;
-import org.apache.nifi.cluster.manager.exception.NoConnectedNodesException;
 import org.apache.nifi.cluster.manager.exception.UnknownNodeException;
 import org.apache.nifi.cluster.manager.impl.WebClusterManager;
 import org.apache.nifi.cluster.node.Node;
@@ -104,6 +103,7 @@ import org.apache.nifi.web.api.dto.ControllerServiceDTO;
 import org.apache.nifi.web.api.dto.ControllerServiceReferencingComponentDTO;
 import org.apache.nifi.web.api.dto.CounterDTO;
 import org.apache.nifi.web.api.dto.CountersDTO;
+import org.apache.nifi.web.api.dto.CountersSnapshotDTO;
 import org.apache.nifi.web.api.dto.DocumentedTypeDTO;
 import org.apache.nifi.web.api.dto.DropRequestDTO;
 import org.apache.nifi.web.api.dto.DtoFactory;
@@ -2140,53 +2140,17 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
 
     @Override
     public CountersDTO getCounters() {
-        if (properties.isClusterManager()) {
-            final Map<String, CounterDTO> mergedCountersMap = new HashMap<>();
-            final Set<Node> connectedNodes = clusterManager.getNodes(Node.Status.CONNECTED);
-
-            if (connectedNodes.isEmpty()) {
-                throw new NoConnectedNodesException();
-            }
-
-            for (final Node node : connectedNodes) {
-                final HeartbeatPayload nodeHeartbeatPayload = node.getHeartbeatPayload();
-                if (nodeHeartbeatPayload == null) {
-                    continue;
-                }
-                final List<Counter> nodeCounters = node.getHeartbeatPayload().getCounters();
-                if (nodeCounters == null) {
-                    continue;
-                }
-
-                // for each node, add its counter values to the aggregate values
-                for (final Counter nodeCounter : nodeCounters) {
-                    final CounterDTO mergedCounter = mergedCountersMap.get(nodeCounter.getIdentifier());
-
-                    // either create a new aggregate counter or update the aggregate counter
-                    if (mergedCounter == null) {
-                        // add new counter
-                        mergedCountersMap.put(nodeCounter.getIdentifier(), dtoFactory.createCounterDto(nodeCounter));
-                    } else {
-                        // update aggregate counter
-                        mergedCounter.setValueCount(mergedCounter.getValueCount() + nodeCounter.getValue());
-                        mergedCounter.setValue(FormatUtils.formatCount(mergedCounter.getValueCount()));
-                    }
-                }
-            }
-
-            final CountersDTO mergedCounters = new CountersDTO();
-            mergedCounters.setGenerated(new Date());
-            mergedCounters.setCounters(mergedCountersMap.values());
-            return mergedCounters;
-        } else {
-            List<Counter> counters = controllerFacade.getCounters();
-            Set<CounterDTO> counterDTOs = new LinkedHashSet<>(counters.size());
-            for (Counter counter : counters) {
-                counterDTOs.add(dtoFactory.createCounterDto(counter));
-            }
-            return dtoFactory.createCountersDto(counterDTOs);
+        List<Counter> counters = controllerFacade.getCounters();
+        Set<CounterDTO> counterDTOs = new LinkedHashSet<>(counters.size());
+        for (Counter counter : counters) {
+            counterDTOs.add(dtoFactory.createCounterDto(counter));
         }
 
+        final CountersSnapshotDTO snapshotDto = dtoFactory.createCountersDto(counterDTOs);
+        final CountersDTO countersDto = new CountersDTO();
+        countersDto.setAggregateSnapshot(snapshotDto);
+
+        return countersDto;
     }
 
     @Override

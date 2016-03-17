@@ -351,8 +351,8 @@ public final class DtoFactory {
      * @param counterDtos dtos
      * @return dto
      */
-    public CountersDTO createCountersDto(final Collection<CounterDTO> counterDtos) {
-        final CountersDTO dto = new CountersDTO();
+    public CountersSnapshotDTO createCountersDto(final Collection<CounterDTO> counterDtos) {
+        final CountersSnapshotDTO dto = new CountersSnapshotDTO();
         dto.setCounters(counterDtos);
         dto.setGenerated(new Date());
         return dto;
