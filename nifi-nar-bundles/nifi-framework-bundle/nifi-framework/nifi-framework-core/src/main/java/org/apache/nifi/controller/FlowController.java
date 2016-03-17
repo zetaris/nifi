@@ -3695,8 +3695,6 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
                 hbPayload.setTotalFlowFileCount(queueSize.getObjectCount());
                 hbPayload.setTotalFlowFileBytes(queueSize.getByteCount());
 
-                hbPayload.setCounters(getCounters());
-
                 // create heartbeat message
                 final Heartbeat heartbeat = new Heartbeat(getNodeId(), bean.isPrimary(), bean.isConnected(), hbPayload.marshal());
                 final HeartbeatMessage message = new HeartbeatMessage();
