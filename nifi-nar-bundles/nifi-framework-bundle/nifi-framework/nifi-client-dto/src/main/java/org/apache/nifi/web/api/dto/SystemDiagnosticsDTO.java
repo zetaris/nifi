@@ -26,7 +26,7 @@ import com.wordnik.swagger.annotations.ApiModelProperty;
 @XmlType(name = "systemDiagnostics")
 public class SystemDiagnosticsDTO {
     private SystemDiagnosticsSnapshotDTO aggregateSnapshot;
-    private List<NodeSystemDiagnosticsSnapshotDTO> nodeSnapshot;
+    private List<NodeSystemDiagnosticsSnapshotDTO> nodeSnapshots;
 
 
     @ApiModelProperty("A systems diagnostic snapshot that represents the aggregate values of all nodes in the cluster. If the NiFi instance is "
@@ -41,11 +41,11 @@ public class SystemDiagnosticsDTO {
 
     @ApiModelProperty("A systems diagnostics snapshot for each node in the cluster. If the NiFi instance is a standalone instance, rather than "
         + "a cluster, this may be null.")
-    public List<NodeSystemDiagnosticsSnapshotDTO> getNodeSnapshot() {
-        return nodeSnapshot;
+    public List<NodeSystemDiagnosticsSnapshotDTO> getNodeSnapshots() {
+        return nodeSnapshots;
     }
 
-    public void setNodeSnapshot(List<NodeSystemDiagnosticsSnapshotDTO> nodeSnapshot) {
-        this.nodeSnapshot = nodeSnapshot;
+    public void setNodeSnapshots(List<NodeSystemDiagnosticsSnapshotDTO> nodeSnapshots) {
+        this.nodeSnapshots = nodeSnapshots;
     }
 }

@@ -39,8 +39,8 @@ public class ConnectionStatusDTO implements Cloneable {
     private String destinationId;
     private String destinationName;
 
-    private ConnectionStatusSnapshotDTO aggregateStatus;
-    private List<NodeConnectionStatusSnapshotDTO> nodeStatuses;
+    private ConnectionStatusSnapshotDTO aggregateSnapshot;
+    private List<NodeConnectionStatusSnapshotDTO> nodeSnapshots;
 
     @ApiModelProperty("The ID of the connection")
     public String getId() {
@@ -106,21 +106,21 @@ public class ConnectionStatusDTO implements Cloneable {
     }
 
     @ApiModelProperty("The status snapshot that represents the aggregate stats of the cluster")
-    public ConnectionStatusSnapshotDTO getAggregateStatus() {
-        return aggregateStatus;
+    public ConnectionStatusSnapshotDTO getAggregateSnapshot() {
+        return aggregateSnapshot;
     }
 
-    public void setAggregateStatus(ConnectionStatusSnapshotDTO aggregateStatus) {
-        this.aggregateStatus = aggregateStatus;
+    public void setAggregateSnapshot(ConnectionStatusSnapshotDTO aggregateSnapshot) {
+        this.aggregateSnapshot = aggregateSnapshot;
     }
 
     @ApiModelProperty("A list of status snapshots for each node")
-    public List<NodeConnectionStatusSnapshotDTO> getNodeStatuses() {
-        return nodeStatuses;
+    public List<NodeConnectionStatusSnapshotDTO> getNodeSnapshots() {
+        return nodeSnapshots;
     }
 
-    public void setNodeStatuses(List<NodeConnectionStatusSnapshotDTO> nodeStatuses) {
-        this.nodeStatuses = nodeStatuses;
+    public void setNodeSnapshots(List<NodeConnectionStatusSnapshotDTO> nodeSnapshots) {
+        this.nodeSnapshots = nodeSnapshots;
     }
 
     @XmlJavaTypeAdapter(TimeAdapter.class)
@@ -143,14 +143,14 @@ public class ConnectionStatusDTO implements Cloneable {
         other.setName(getName());
         other.setSourceId(getSourceId());
         other.setSourceName(getSourceName());
-        other.setAggregateStatus(getAggregateStatus().clone());
+        other.setAggregateSnapshot(getAggregateSnapshot().clone());
 
-        final List<NodeConnectionStatusSnapshotDTO> nodeStatuses = getNodeStatuses();
+        final List<NodeConnectionStatusSnapshotDTO> nodeStatuses = getNodeSnapshots();
         final List<NodeConnectionStatusSnapshotDTO> nodeStatusClones = new ArrayList<>(nodeStatuses.size());
         for (final NodeConnectionStatusSnapshotDTO nodeStatus : nodeStatuses) {
             nodeStatusClones.add(nodeStatus.clone());
         }
-        other.setNodeStatuses(nodeStatusClones);
+        other.setNodeSnapshots(nodeStatusClones);
 
         return other;
     }

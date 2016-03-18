@@ -35,8 +35,8 @@ public class StatusHistoryDTO {
 
     private LinkedHashMap<String, String> componentDetails;
     private List<StatusDescriptorDTO> fieldDescriptors;
-    private List<StatusSnapshotDTO> aggregateStatusSnapshots;
-    private List<NodeStatusSnapshotsDTO> nodeStatusSnapshots;
+    private List<StatusSnapshotDTO> aggregateSnapshots;
+    private List<NodeStatusSnapshotsDTO> nodeSnapshots;
 
     /**
      * @return when this status history was generated
@@ -75,21 +75,21 @@ public class StatusHistoryDTO {
     @ApiModelProperty("A list of StatusSnapshotDTO objects that provide the actual metric values for the component. If the NiFi instance "
         + "is clustered, this will represent the aggregate status across all nodes. If the NiFi instance is not clustered, this will represent "
         + "the status of the entire NiFi instance.")
-    public List<StatusSnapshotDTO> getAggregateStatusSnapshots() {
-        return aggregateStatusSnapshots;
+    public List<StatusSnapshotDTO> getAggregateSnapshots() {
+        return aggregateSnapshots;
     }
 
-    public void setAggregateStatusSnapshots(List<StatusSnapshotDTO> aggregateStatusSnapshots) {
-        this.aggregateStatusSnapshots = aggregateStatusSnapshots;
+    public void setAggregateSnapshots(List<StatusSnapshotDTO> aggregateSnapshots) {
+        this.aggregateSnapshots = aggregateSnapshots;
     }
 
     @ApiModelProperty("The NodeStatusSnapshotsDTO objects that provide the actual metric values for the component, for each node. "
         + "If the NiFi instance is not clustered, this value will be null.")
-    public List<NodeStatusSnapshotsDTO> getNodeStatusSnapshots() {
-        return nodeStatusSnapshots;
+    public List<NodeStatusSnapshotsDTO> getNodeSnapshots() {
+        return nodeSnapshots;
     }
 
-    public void setNodeStatusSnapshots(List<NodeStatusSnapshotsDTO> nodeStatusSnapshots) {
-        this.nodeStatusSnapshots = nodeStatusSnapshots;
+    public void setNodeSnapshots(List<NodeStatusSnapshotsDTO> nodeSnapshots) {
+        this.nodeSnapshots = nodeSnapshots;
     }
 }

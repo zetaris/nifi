@@ -442,7 +442,7 @@ public class OutputPortResource extends ApplicationResource {
 
                 // ensure there is an updated entity (result of merging) and prune the response as necessary
                 if (entity != null && !nodewise) {
-                    entity.getPortStatus().setNodeStatuses(null);
+                    entity.getPortStatus().setNodeSnapshots(null);
                 }
 
                 return nodeResponse.getResponse();

@@ -35,8 +35,8 @@ public class PortStatusDTO {
     private String runStatus;
     private Date statsLastRefreshed;
 
-    private PortStatusSnapshotDTO aggregateStatus;
-    private List<NodePortStatusSnapshotDTO> nodeStatuses;
+    private PortStatusSnapshotDTO aggregateSnapshot;
+    private List<NodePortStatusSnapshotDTO> nodeSnapshots;
 
     @ApiModelProperty("Whether the port has incoming or outgoing connections to a remote NiFi.")
     public Boolean isTransmitting() {
@@ -89,22 +89,22 @@ public class PortStatusDTO {
 
     @ApiModelProperty("A status snapshot that represents the aggregate stats of all nodes in the cluster. If the NiFi instance is "
         + "a standalone instance, rather than a cluster, this represents the stats of the single instance.")
-    public PortStatusSnapshotDTO getAggregateStatus() {
-        return aggregateStatus;
+    public PortStatusSnapshotDTO getAggregateSnapshot() {
+        return aggregateSnapshot;
     }
 
-    public void setAggregateStatus(PortStatusSnapshotDTO aggregateStatus) {
-        this.aggregateStatus = aggregateStatus;
+    public void setAggregateSnapshot(PortStatusSnapshotDTO aggregateSnapshot) {
+        this.aggregateSnapshot = aggregateSnapshot;
     }
 
     @ApiModelProperty("A status snapshot for each node in the cluster. If the NiFi instance is a standalone instance, rather than "
         + "a cluster, this may be null.")
-    public List<NodePortStatusSnapshotDTO> getNodeStatuses() {
-        return nodeStatuses;
+    public List<NodePortStatusSnapshotDTO> getNodeSnapshots() {
+        return nodeSnapshots;
     }
 
-    public void setNodeStatuses(List<NodePortStatusSnapshotDTO> nodeStatuses) {
-        this.nodeStatuses = nodeStatuses;
+    public void setNodeSnapshots(List<NodePortStatusSnapshotDTO> nodeSnapshots) {
+        this.nodeSnapshots = nodeSnapshots;
     }
 
     /**

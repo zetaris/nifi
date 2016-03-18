@@ -1321,7 +1321,7 @@ public class ProcessGroupResource extends ApplicationResource {
 
                 // ensure there is an updated entity (result of merging) and prune the response as necessary
                 if (entity != null && !nodewise) {
-                    entity.getProcessGroupStatus().setNodeStatuses(null);
+                    entity.getProcessGroupStatus().setNodeSnapshots(null);
                 }
 
                 return nodeResponse.getResponse();
@@ -1345,9 +1345,9 @@ public class ProcessGroupResource extends ApplicationResource {
 
         // prune the response as necessary
         if (!recursive) {
-            pruneChildGroups(statusReport.getAggregateStatus());
-            if (statusReport.getNodeStatuses() != null) {
-                for (final NodeProcessGroupStatusSnapshotDTO nodeSnapshot : statusReport.getNodeStatuses()) {
+            pruneChildGroups(statusReport.getAggregateSnapshot());
+            if (statusReport.getNodeSnapshots() != null) {
+                for (final NodeProcessGroupStatusSnapshotDTO nodeSnapshot : statusReport.getNodeSnapshots()) {
                     pruneChildGroups(nodeSnapshot.getStatusSnapshot());
                 }
             }

@@ -39,8 +39,8 @@ public class ProcessorStatusDTO implements Cloneable {
     private String runStatus;
     private Date statsLastRefreshed;
 
-    private ProcessorStatusSnapshotDTO aggregateStatus;
-    private List<NodeProcessorStatusSnapshotDTO> nodeStatuses;
+    private ProcessorStatusSnapshotDTO aggregateSnapshot;
+    private List<NodeProcessorStatusSnapshotDTO> nodeSnapshots;
 
     @ApiModelProperty("The unique ID of the process group that the Processor belongs to")
     public String getGroupId() {
@@ -99,22 +99,22 @@ public class ProcessorStatusDTO implements Cloneable {
 
     @ApiModelProperty("A status snapshot that represents the aggregate stats of all nodes in the cluster. If the NiFi instance is "
         + "a standalone instance, rather than a cluster, this represents the stats of the single instance.")
-    public ProcessorStatusSnapshotDTO getAggregateStatus() {
-        return aggregateStatus;
+    public ProcessorStatusSnapshotDTO getAggregateSnapshot() {
+        return aggregateSnapshot;
     }
 
-    public void setAggregateStatus(ProcessorStatusSnapshotDTO aggregateStatus) {
-        this.aggregateStatus = aggregateStatus;
+    public void setAggregateSnapshot(ProcessorStatusSnapshotDTO aggregateSnapshot) {
+        this.aggregateSnapshot = aggregateSnapshot;
     }
 
     @ApiModelProperty("A status snapshot for each node in the cluster. If the NiFi instance is a standalone instance, rather than "
         + "a cluster, this may be null.")
-    public List<NodeProcessorStatusSnapshotDTO> getNodeStatuses() {
-        return nodeStatuses;
+    public List<NodeProcessorStatusSnapshotDTO> getNodeSnapshots() {
+        return nodeSnapshots;
     }
 
-    public void setNodeStatuses(List<NodeProcessorStatusSnapshotDTO> nodeStatuses) {
-        this.nodeStatuses = nodeStatuses;
+    public void setNodeSnapshots(List<NodeProcessorStatusSnapshotDTO> nodeSnapshots) {
+        this.nodeSnapshots = nodeSnapshots;
     }
 
     @Override
@@ -126,14 +126,14 @@ public class ProcessorStatusDTO implements Cloneable {
         other.setRunStatus(getRunStatus());
         other.setType(getType());
         other.setStatsLastRefreshed(getStatsLastRefreshed());
-        other.setAggregateStatus(getAggregateStatus().clone());
+        other.setAggregateSnapshot(getAggregateSnapshot().clone());
 
-        final List<NodeProcessorStatusSnapshotDTO> nodeStatuses = getNodeStatuses();
+        final List<NodeProcessorStatusSnapshotDTO> nodeStatuses = getNodeSnapshots();
         final List<NodeProcessorStatusSnapshotDTO> nodeStatusClones = new ArrayList<>(nodeStatuses.size());
         for (final NodeProcessorStatusSnapshotDTO status : nodeStatuses) {
             nodeStatusClones.add(status.clone());
         }
-        other.setNodeStatuses(nodeStatusClones);
+        other.setNodeSnapshots(nodeStatusClones);
 
         return other;
     }

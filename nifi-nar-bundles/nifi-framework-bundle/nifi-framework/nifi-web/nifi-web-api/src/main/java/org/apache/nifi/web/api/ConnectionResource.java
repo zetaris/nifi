@@ -346,7 +346,7 @@ public class ConnectionResource extends ApplicationResource {
 
                 // ensure there is an updated entity (result of merging) and prune the response as necessary
                 if (entity != null && !nodewise) {
-                    entity.getConnectionStatus().setNodeStatuses(null);
+                    entity.getConnectionStatus().setNodeSnapshots(null);
                 }
 
                 return nodeResponse.getResponse();

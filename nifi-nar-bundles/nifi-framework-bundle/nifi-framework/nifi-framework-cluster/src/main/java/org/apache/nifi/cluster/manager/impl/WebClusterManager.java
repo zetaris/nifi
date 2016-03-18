@@ -205,6 +205,8 @@ import org.apache.nifi.web.api.dto.DropRequestDTO;
 import org.apache.nifi.web.api.dto.FlowFileSummaryDTO;
 import org.apache.nifi.web.api.dto.FlowSnippetDTO;
 import org.apache.nifi.web.api.dto.ListingRequestDTO;
+import org.apache.nifi.web.api.dto.NodeCountersSnapshotDTO;
+import org.apache.nifi.web.api.dto.NodeSystemDiagnosticsSnapshotDTO;
 import org.apache.nifi.web.api.dto.ProcessGroupDTO;
 import org.apache.nifi.web.api.dto.ProcessorDTO;
 import org.apache.nifi.web.api.dto.QueueSizeDTO;
@@ -372,7 +374,8 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
     public static final Pattern CONNECTION_STATUS_URI_PATTERN = Pattern.compile("/nifi-api/controller/process-groups/(?:(?:root)|(?:[a-f0-9\\-]{36}))/connections/[a-f0-9\\-]{36}/status");
     public static final Pattern INPUT_PORT_STATUS_URI_PATTERN = Pattern.compile("/nifi-api/controller/process-groups/(?:(?:root)|(?:[a-f0-9\\-]{36}))/input-ports/[a-f0-9\\-]{36}/status");
     public static final Pattern OUTPUT_PORT_STATUS_URI_PATTERN = Pattern.compile("/nifi-api/controller/process-groups/(?:(?:root)|(?:[a-f0-9\\-]{36}))/output-ports/[a-f0-9\\-]{36}/status");
-    public static final Pattern REMOTE_PROCESS_GROUP_STATUS_URI_PATTERN = Pattern.compile("/nifi-api/controller/process-groups/(?:(?:root)|(?:[a-f0-9\\-]{36}))/remote-process-groups/[a-f0-9\\-]{36}/status");
+    public static final Pattern REMOTE_PROCESS_GROUP_STATUS_URI_PATTERN =
+        Pattern.compile("/nifi-api/controller/process-groups/(?:(?:root)|(?:[a-f0-9\\-]{36}))/remote-process-groups/[a-f0-9\\-]{36}/status");
 
     @Deprecated
     public static final Pattern QUEUE_CONTENTS_URI = Pattern.compile("/nifi-api/controller/process-groups/(?:(?:root)|(?:[a-f0-9\\-]{36}))/connections/[a-f0-9\\-]{36}/contents");
@@ -2669,36 +2672,63 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
     }
 
 
-    private void mergeSystemDiagnostics(final SystemDiagnosticsDTO target, final Map<NodeIdentifier, SystemDiagnosticsDTO> resultMap) {
-        for (final Map.Entry<NodeIdentifier, SystemDiagnosticsDTO> entry : resultMap.entrySet()) {
-            final NodeIdentifier nodeId = entry.getKey();
-            final SystemDiagnosticsDTO toMerge = entry.getValue();
+    private void mergeSystemDiagnostics(final SystemDiagnosticsDTO target, final NodeIdentifier selectedNodeId, final Map<NodeIdentifier, SystemDiagnosticsDTO> resultMap) {
+        final SystemDiagnosticsDTO mergedSystemDiagnostics = target;
+        mergedSystemDiagnostics.setNodeSnapshots(new ArrayList<NodeSystemDiagnosticsSnapshotDTO>());
 
-            StatusMerger.merge(target, toMerge, nodeId.getId(), nodeId.getApiAddress(), nodeId.getApiPort());
-        }
-    }
-
-    private void mergeCounters(final CountersDTO target, final Map<NodeIdentifier, CountersDTO> resultMap) {
-        for (final Map.Entry<NodeIdentifier, CountersDTO> entry : resultMap.entrySet()) {
-            final NodeIdentifier nodeId = entry.getKey();
-            final CountersDTO toMerge = entry.getValue();
-
-            StatusMerger.merge(target, toMerge, nodeId.getId(), nodeId.getApiAddress(), nodeId.getApiPort());
-        }
-    }
-
-    private void mergeGroupStatus(final ProcessGroupStatusDTO statusDto, final NodeIdentifier selectedNodeId, final Map<NodeIdentifier, ProcessGroupStatusDTO> resultMap) {
-        ProcessGroupStatusDTO mergedProcessGroupStatus = statusDto;
-        mergedProcessGroupStatus.setNodeStatuses(new ArrayList<NodeProcessGroupStatusSnapshotDTO>());
-
-        final NodeProcessGroupStatusSnapshotDTO selectedNodeSnapshot = new NodeProcessGroupStatusSnapshotDTO();
-        selectedNodeSnapshot.setStatusSnapshot(statusDto.getAggregateStatus().clone());
+        final NodeSystemDiagnosticsSnapshotDTO selectedNodeSnapshot = new NodeSystemDiagnosticsSnapshotDTO();
+        selectedNodeSnapshot.setSnapshot(target.getAggregateSnapshot().clone());
         selectedNodeSnapshot.setAddress(selectedNodeId.getApiAddress());
         selectedNodeSnapshot.setApiPort(selectedNodeId.getApiPort());
         selectedNodeSnapshot.setNodeId(selectedNodeId.getId());
 
+        mergedSystemDiagnostics.getNodeSnapshots().add(selectedNodeSnapshot);
 
-        mergedProcessGroupStatus.getNodeStatuses().add(selectedNodeSnapshot);
+        for (final Map.Entry<NodeIdentifier, SystemDiagnosticsDTO> entry : resultMap.entrySet()) {
+            final NodeIdentifier nodeId = entry.getKey();
+            final SystemDiagnosticsDTO toMerge = entry.getValue();
+            if (toMerge == target) {
+                continue;
+            }
+
+            StatusMerger.merge(mergedSystemDiagnostics, toMerge, nodeId.getId(), nodeId.getApiAddress(), nodeId.getApiPort());
+        }
+    }
+
+    private void mergeCounters(final CountersDTO target, final NodeIdentifier selectedNodeId, final Map<NodeIdentifier, CountersDTO> resultMap) {
+        final CountersDTO mergedCounters = target;
+        mergedCounters.setNodeSnapshots(new ArrayList<NodeCountersSnapshotDTO>());
+
+        final NodeCountersSnapshotDTO selectedNodeSnapshot = new NodeCountersSnapshotDTO();
+        selectedNodeSnapshot.setSnapshot(target.getAggregateSnapshot().clone());
+        selectedNodeSnapshot.setAddress(selectedNodeId.getApiAddress());
+        selectedNodeSnapshot.setApiPort(selectedNodeId.getApiPort());
+        selectedNodeSnapshot.setNodeId(selectedNodeId.getId());
+
+        mergedCounters.getNodeSnapshots().add(selectedNodeSnapshot);
+
+        for (final Map.Entry<NodeIdentifier, CountersDTO> entry : resultMap.entrySet()) {
+            final NodeIdentifier nodeId = entry.getKey();
+            final CountersDTO toMerge = entry.getValue();
+            if (toMerge == target) {
+                continue;
+            }
+
+            StatusMerger.merge(mergedCounters, toMerge, nodeId.getId(), nodeId.getApiAddress(), nodeId.getApiPort());
+        }
+    }
+
+    private void mergeGroupStatus(final ProcessGroupStatusDTO statusDto, final NodeIdentifier selectedNodeId, final Map<NodeIdentifier, ProcessGroupStatusDTO> resultMap) {
+        final ProcessGroupStatusDTO mergedProcessGroupStatus = statusDto;
+        mergedProcessGroupStatus.setNodeSnapshots(new ArrayList<NodeProcessGroupStatusSnapshotDTO>());
+
+        final NodeProcessGroupStatusSnapshotDTO selectedNodeSnapshot = new NodeProcessGroupStatusSnapshotDTO();
+        selectedNodeSnapshot.setStatusSnapshot(statusDto.getAggregateSnapshot().clone());
+        selectedNodeSnapshot.setAddress(selectedNodeId.getApiAddress());
+        selectedNodeSnapshot.setApiPort(selectedNodeId.getApiPort());
+        selectedNodeSnapshot.setNodeId(selectedNodeId.getId());
+
+        mergedProcessGroupStatus.getNodeSnapshots().add(selectedNodeSnapshot);
 
         for (final Map.Entry<NodeIdentifier, ProcessGroupStatusDTO> entry : resultMap.entrySet()) {
             final NodeIdentifier nodeId = entry.getKey();
@@ -2707,7 +2737,7 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
                 continue;
             }
 
-            final ProcessGroupStatusSnapshotDTO nodeSnapshot = nodeProcessGroupStatus.getAggregateStatus();
+            final ProcessGroupStatusSnapshotDTO nodeSnapshot = nodeProcessGroupStatus.getAggregateSnapshot();
             for (final RemoteProcessGroupStatusSnapshotDTO remoteProcessGroupStatus : nodeSnapshot.getRemoteProcessGroupStatusSnapshots()) {
                 final List<String> nodeAuthorizationIssues = remoteProcessGroupStatus.getAuthorizationIssues();
                 if (!nodeAuthorizationIssues.isEmpty()) {
@@ -2726,15 +2756,15 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
 
     private void mergeProcessorStatus(final ProcessorStatusDTO statusDto, final NodeIdentifier selectedNodeId, final Map<NodeIdentifier, ProcessorStatusDTO> resultMap) {
         final ProcessorStatusDTO mergedProcessorStatus = statusDto;
-        mergedProcessorStatus.setNodeStatuses(new ArrayList<NodeProcessorStatusSnapshotDTO>());
+        mergedProcessorStatus.setNodeSnapshots(new ArrayList<NodeProcessorStatusSnapshotDTO>());
 
         final NodeProcessorStatusSnapshotDTO selectedNodeSnapshot = new NodeProcessorStatusSnapshotDTO();
-        selectedNodeSnapshot.setStatusSnapshot(statusDto.getAggregateStatus().clone());
+        selectedNodeSnapshot.setStatusSnapshot(statusDto.getAggregateSnapshot().clone());
         selectedNodeSnapshot.setAddress(selectedNodeId.getApiAddress());
         selectedNodeSnapshot.setApiPort(selectedNodeId.getApiPort());
         selectedNodeSnapshot.setNodeId(selectedNodeId.getId());
 
-        mergedProcessorStatus.getNodeStatuses().add(selectedNodeSnapshot);
+        mergedProcessorStatus.getNodeSnapshots().add(selectedNodeSnapshot);
 
         // merge the other nodes
         for (final Map.Entry<NodeIdentifier, ProcessorStatusDTO> entry : resultMap.entrySet()) {
@@ -2750,15 +2780,15 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
 
     private void mergeConnectionStatus(final ConnectionStatusDTO statusDto, final NodeIdentifier selectedNodeId, final Map<NodeIdentifier, ConnectionStatusDTO> resultMap) {
         final ConnectionStatusDTO mergedConnectionStatus = statusDto;
-        mergedConnectionStatus.setNodeStatuses(new ArrayList<NodeConnectionStatusSnapshotDTO>());
+        mergedConnectionStatus.setNodeSnapshots(new ArrayList<NodeConnectionStatusSnapshotDTO>());
 
         final NodeConnectionStatusSnapshotDTO selectedNodeSnapshot = new NodeConnectionStatusSnapshotDTO();
-        selectedNodeSnapshot.setStatusSnapshot(statusDto.getAggregateStatus().clone());
+        selectedNodeSnapshot.setStatusSnapshot(statusDto.getAggregateSnapshot().clone());
         selectedNodeSnapshot.setAddress(selectedNodeId.getApiAddress());
         selectedNodeSnapshot.setApiPort(selectedNodeId.getApiPort());
         selectedNodeSnapshot.setNodeId(selectedNodeId.getId());
 
-        mergedConnectionStatus.getNodeStatuses().add(selectedNodeSnapshot);
+        mergedConnectionStatus.getNodeSnapshots().add(selectedNodeSnapshot);
 
         // merge the other nodes
         for (final Map.Entry<NodeIdentifier, ConnectionStatusDTO> entry : resultMap.entrySet()) {
@@ -2774,15 +2804,15 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
 
     private void mergePortStatus(final PortStatusDTO statusDto, final NodeIdentifier selectedNodeId, final Map<NodeIdentifier, PortStatusDTO> resultMap) {
         final PortStatusDTO mergedPortStatus = statusDto;
-        mergedPortStatus.setNodeStatuses(new ArrayList<NodePortStatusSnapshotDTO>());
+        mergedPortStatus.setNodeSnapshots(new ArrayList<NodePortStatusSnapshotDTO>());
 
         final NodePortStatusSnapshotDTO selectedNodeSnapshot = new NodePortStatusSnapshotDTO();
-        selectedNodeSnapshot.setStatusSnapshot(statusDto.getAggregateStatus().clone());
+        selectedNodeSnapshot.setStatusSnapshot(statusDto.getAggregateSnapshot().clone());
         selectedNodeSnapshot.setAddress(selectedNodeId.getApiAddress());
         selectedNodeSnapshot.setApiPort(selectedNodeId.getApiPort());
         selectedNodeSnapshot.setNodeId(selectedNodeId.getId());
 
-        mergedPortStatus.getNodeStatuses().add(selectedNodeSnapshot);
+        mergedPortStatus.getNodeSnapshots().add(selectedNodeSnapshot);
 
         // merge the other nodes
         for (final Map.Entry<NodeIdentifier, PortStatusDTO> entry : resultMap.entrySet()) {
@@ -2798,15 +2828,15 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
 
     private void mergeRemoteProcessGroupStatus(final RemoteProcessGroupStatusDTO statusDto, final NodeIdentifier selectedNodeId, final Map<NodeIdentifier, RemoteProcessGroupStatusDTO> resultMap) {
         final RemoteProcessGroupStatusDTO mergedRemoteProcessGroupStatus = statusDto;
-        mergedRemoteProcessGroupStatus.setNodeStatuses(new ArrayList<NodeRemoteProcessGroupStatusSnapshotDTO>());
+        mergedRemoteProcessGroupStatus.setNodeSnapshots(new ArrayList<NodeRemoteProcessGroupStatusSnapshotDTO>());
 
         final NodeRemoteProcessGroupStatusSnapshotDTO selectedNodeSnapshot = new NodeRemoteProcessGroupStatusSnapshotDTO();
-        selectedNodeSnapshot.setStatusSnapshot(statusDto.getAggregateStatus().clone());
+        selectedNodeSnapshot.setStatusSnapshot(statusDto.getAggregateSnapshot().clone());
         selectedNodeSnapshot.setAddress(selectedNodeId.getApiAddress());
         selectedNodeSnapshot.setApiPort(selectedNodeId.getApiPort());
         selectedNodeSnapshot.setNodeId(selectedNodeId.getId());
 
-        mergedRemoteProcessGroupStatus.getNodeStatuses().add(selectedNodeSnapshot);
+        mergedRemoteProcessGroupStatus.getNodeSnapshots().add(selectedNodeSnapshot);
 
         // merge the other nodes
         for (final Map.Entry<NodeIdentifier, RemoteProcessGroupStatusDTO> entry : resultMap.entrySet()) {
@@ -4073,23 +4103,33 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
             final SystemDiagnosticsEntity responseEntity = clientResponse.getClientResponse().getEntity(SystemDiagnosticsEntity.class);
             final SystemDiagnosticsDTO responseDto = responseEntity.getSystemDiagnostics();
 
+            NodeIdentifier nodeIdentifier = null;
+
             final Map<NodeIdentifier, SystemDiagnosticsDTO> resultsMap = new HashMap<>();
             for (final NodeResponse nodeResponse : updatedNodesMap.values()) {
                 if (problematicNodeResponses.contains(nodeResponse)) {
                     continue;
                 }
 
-                final SystemDiagnosticsEntity nodeResponseEntity = nodeResponse == clientResponse ? responseEntity : nodeResponse.getClientResponse().getEntity(SystemDiagnosticsEntity.class);
-                final SystemDiagnosticsDTO nodeStatus = nodeResponseEntity.getSystemDiagnostics();
+                final SystemDiagnosticsEntity nodeResponseEntity;
+                if (nodeResponse == clientResponse) {
+                    nodeIdentifier = nodeResponse.getNodeId();
+                    nodeResponseEntity = responseEntity;
+                } else {
+                    nodeResponseEntity = nodeResponse.getClientResponse().getEntity(SystemDiagnosticsEntity.class);
+                }
 
+                final SystemDiagnosticsDTO nodeStatus = nodeResponseEntity.getSystemDiagnostics();
                 resultsMap.put(nodeResponse.getNodeId(), nodeStatus);
             }
-            mergeSystemDiagnostics(responseDto, resultsMap);
+            mergeSystemDiagnostics(responseDto, nodeIdentifier, resultsMap);
 
             clientResponse = new NodeResponse(clientResponse, responseEntity);
         } else if (hasSuccessfulClientResponse && isCountersEndpoint(uri, method)) {
             final CountersEntity responseEntity = clientResponse.getClientResponse().getEntity(CountersEntity.class);
             final CountersDTO responseDto = responseEntity.getCounters();
+
+            NodeIdentifier nodeIdentifier = null;
 
             final Map<NodeIdentifier, CountersDTO> resultsMap = new HashMap<>();
             for (final NodeResponse nodeResponse : updatedNodesMap.values()) {
@@ -4097,12 +4137,18 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
                     continue;
                 }
 
-                final CountersEntity nodeResponseEntity = nodeResponse == clientResponse ? responseEntity : nodeResponse.getClientResponse().getEntity(CountersEntity.class);
-                final CountersDTO nodeStatus = nodeResponseEntity.getCounters();
+                final CountersEntity nodeResponseEntity;
+                if (nodeResponse == clientResponse) {
+                    nodeIdentifier = nodeResponse.getNodeId();
+                    nodeResponseEntity = responseEntity;
+                } else {
+                    nodeResponseEntity = nodeResponse.getClientResponse().getEntity(CountersEntity.class);
+                }
 
+                final CountersDTO nodeStatus = nodeResponseEntity.getCounters();
                 resultsMap.put(nodeResponse.getNodeId(), nodeStatus);
             }
-            mergeCounters(responseDto, resultsMap);
+            mergeCounters(responseDto, nodeIdentifier, resultsMap);
 
             clientResponse = new NodeResponse(clientResponse, responseEntity);
         } else {
@@ -4180,18 +4226,18 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
             lastStatusHistory = nodeStatus;
 
             final NodeIdentifier nodeId = nodeResponse.getNodeId();
-            final NodeStatusSnapshotsDTO nodeStatuSnapshot = new NodeStatusSnapshotsDTO();
-            nodeStatuSnapshot.setNodeId(nodeId.getId());
-            nodeStatuSnapshot.setAddress(nodeId.getApiAddress());
-            nodeStatuSnapshot.setApiPort(nodeId.getApiPort());
-            nodeStatuSnapshot.setStatusSnapshots(nodeStatus.getAggregateStatusSnapshots());
-            nodeStatusSnapshots.add(nodeStatuSnapshot);
+            final NodeStatusSnapshotsDTO nodeStatusSnapshot = new NodeStatusSnapshotsDTO();
+            nodeStatusSnapshot.setNodeId(nodeId.getId());
+            nodeStatusSnapshot.setAddress(nodeId.getApiAddress());
+            nodeStatusSnapshot.setApiPort(nodeId.getApiPort());
+            nodeStatusSnapshot.setStatusSnapshots(nodeStatus.getAggregateSnapshots());
+            nodeStatusSnapshots.add(nodeStatusSnapshot);
         }
 
         final StatusHistoryDTO clusterStatusHistory = new StatusHistoryDTO();
-        clusterStatusHistory.setAggregateStatusSnapshots(mergeStatusHistories(nodeStatusSnapshots, metricDescriptors));
+        clusterStatusHistory.setAggregateSnapshots(mergeStatusHistories(nodeStatusSnapshots, metricDescriptors));
         clusterStatusHistory.setGenerated(new Date());
-        clusterStatusHistory.setNodeStatusSnapshots(nodeStatusSnapshots);
+        clusterStatusHistory.setNodeSnapshots(nodeStatusSnapshots);
         if (lastStatusHistory != null) {
             clusterStatusHistory.setComponentDetails(lastStatusHistory.getComponentDetails());
             clusterStatusHistory.setFieldDescriptors(lastStatusHistory.getFieldDescriptors());

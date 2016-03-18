@@ -158,18 +158,18 @@ nf.Graph = (function () {
          * of the existing components on the graph and will not cause them to be repainted. 
          * This operation must be very inexpensive due to the frequency it is called.
          * 
-         * @argument {object} aggregateStatus    The status of the process group aggregated accross the cluster
+         * @argument {object} aggregateSnapshot    The status of the process group aggregated accross the cluster
          */
-        setStatus: function (aggregateStatus) {
+        setStatus: function (aggregateSnapshot) {
             // merge the port status together
-            var portStatus = combinePortStatus(aggregateStatus);
+            var portStatus = combinePortStatus(aggregateSnapshot);
 
             // set the component status
             nf.Port.setStatus(portStatus);
-            nf.RemoteProcessGroup.setStatus(aggregateStatus.remoteProcessGroupStatusSnapshots);
-            nf.ProcessGroup.setStatus(aggregateStatus.processGroupStatusSnapshots);
-            nf.Processor.setStatus(aggregateStatus.processorStatusSnapshots);
-            nf.Connection.setStatus(aggregateStatus.connectionStatusSnapshots);
+            nf.RemoteProcessGroup.setStatus(aggregateSnapshot.remoteProcessGroupStatusSnapshots);
+            nf.ProcessGroup.setStatus(aggregateSnapshot.processGroupStatusSnapshots);
+            nf.Processor.setStatus(aggregateSnapshot.processorStatusSnapshots);
+            nf.Connection.setStatus(aggregateSnapshot.connectionStatusSnapshots);
         },
         
         /**

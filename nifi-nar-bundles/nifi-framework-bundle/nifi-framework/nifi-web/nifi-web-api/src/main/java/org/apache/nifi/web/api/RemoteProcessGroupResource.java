@@ -323,7 +323,7 @@ public class RemoteProcessGroupResource extends ApplicationResource {
 
                 // ensure there is an updated entity (result of merging) and prune the response as necessary
                 if (entity != null && !nodewise) {
-                    entity.getRemoteProcessGroupStatus().setNodeStatuses(null);
+                    entity.getRemoteProcessGroupStatus().setNodeSnapshots(null);
                 }
 
                 return nodeResponse.getResponse();

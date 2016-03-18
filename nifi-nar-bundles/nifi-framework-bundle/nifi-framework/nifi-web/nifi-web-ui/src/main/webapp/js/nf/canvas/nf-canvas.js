@@ -844,10 +844,10 @@ nf.Canvas = (function () {
                 // report the updated stats
                 if (nf.Common.isDefinedAndNotNull(response.processGroupStatus)) {
                     var processGroupStatus = response.processGroupStatus;
-                    var aggregateStatus = processGroupStatus.aggregateStatus;
+                    var aggregateSnapshot = processGroupStatus.aggregateSnapshot;
 
                     // update all the stats
-                    nf.Graph.setStatus(aggregateStatus);
+                    nf.Graph.setStatus(aggregateSnapshot);
 
                     // update the timestamp
                     $('#stats-last-refreshed').text(processGroupStatus.statsLastRefreshed);

@@ -37,8 +37,8 @@ public class RemoteProcessGroupStatusDTO {
 
     private List<String> authorizationIssues;
 
-    private RemoteProcessGroupStatusSnapshotDTO aggregateStatus;
-    private List<NodeRemoteProcessGroupStatusSnapshotDTO> nodeStatuses;
+    private RemoteProcessGroupStatusSnapshotDTO aggregateSnapshot;
+    private List<NodeRemoteProcessGroupStatusSnapshotDTO> nodeSnapshots;
 
     @ApiModelProperty("The unique ID of the process group that the Processor belongs to")
     public String getGroupId() {
@@ -97,22 +97,22 @@ public class RemoteProcessGroupStatusDTO {
 
     @ApiModelProperty("A status snapshot that represents the aggregate stats of all nodes in the cluster. If the NiFi instance is "
         + "a standalone instance, rather than a cluster, this represents the stats of the single instance.")
-    public RemoteProcessGroupStatusSnapshotDTO getAggregateStatus() {
-        return aggregateStatus;
+    public RemoteProcessGroupStatusSnapshotDTO getAggregateSnapshot() {
+        return aggregateSnapshot;
     }
 
-    public void setAggregateStatus(RemoteProcessGroupStatusSnapshotDTO aggregateStatus) {
-        this.aggregateStatus = aggregateStatus;
+    public void setAggregateSnapshot(RemoteProcessGroupStatusSnapshotDTO aggregateSnapshot) {
+        this.aggregateSnapshot = aggregateSnapshot;
     }
 
     @ApiModelProperty("A status snapshot for each node in the cluster. If the NiFi instance is a standalone instance, rather than "
         + "a cluster, this may be null.")
-    public List<NodeRemoteProcessGroupStatusSnapshotDTO> getNodeStatuses() {
-        return nodeStatuses;
+    public List<NodeRemoteProcessGroupStatusSnapshotDTO> getNodeSnapshots() {
+        return nodeSnapshots;
     }
 
-    public void setNodeStatuses(List<NodeRemoteProcessGroupStatusSnapshotDTO> nodeStatuses) {
-        this.nodeStatuses = nodeStatuses;
+    public void setNodeSnapshots(List<NodeRemoteProcessGroupStatusSnapshotDTO> nodeSnapshots) {
+        this.nodeSnapshots = nodeSnapshots;
     }
 
     /**

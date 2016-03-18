@@ -105,11 +105,11 @@ nf.StatusHistory = (function () {
         statusHistory.selectedDescriptor = nf.Common.isUndefined(selectedDescriptor) ? descriptors[0] : selectedDescriptor;
 
         // ensure enough status snapshots
-        if (nf.Common.isDefinedAndNotNull(componentStatusHistory.aggregateStatusSnapshots) && componentStatusHistory.aggregateStatusSnapshots.length > 1) {
+        if (nf.Common.isDefinedAndNotNull(componentStatusHistory.aggregateSnapshots) && componentStatusHistory.aggregateSnapshots.length > 1) {
             statusHistory.instances.push({
                 id: config.nifiInstanceId,
                 label: config.nifiInstanceLabel,
-                snapshots: componentStatusHistory.aggregateStatusSnapshots
+                snapshots: componentStatusHistory.aggregateSnapshots
             });
         } else {
         	insufficientHistory();
@@ -117,13 +117,13 @@ nf.StatusHistory = (function () {
         }
 
         // get the status for each node in the cluster if applicable
-        $.each(componentStatusHistory.nodeStatusSnapshots, function (_, nodeStatusSnapshots) {
+        $.each(componentStatusHistory.nodeSnapshots, function (_, nodeSnapshots) {
             // ensure enough status snapshots
-            if (nf.Common.isDefinedAndNotNull(nodeStatusSnapshots.statusSnapshots) && nodeStatusSnapshots.statusSnapshots.length > 1) {
+            if (nf.Common.isDefinedAndNotNull(nodeSnapshots.statusSnapshots) && nodeSnapshots.statusSnapshots.length > 1) {
                 statusHistory.instances.push({
-                    id: nodeStatusSnapshots.nodeId,
-                    label: nodeStatusSnapshots.address + ':' + nodeStatusSnapshots.apiPort,
-                    snapshots: nodeStatusSnapshots.statusSnapshots
+                    id: nodeSnapshots.nodeId,
+                    label: nodeSnapshots.address + ':' + nodeSnapshots.apiPort,
+                    snapshots: nodeSnapshots.statusSnapshots
                 });
             }
         });

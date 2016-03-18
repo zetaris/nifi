@@ -485,7 +485,7 @@ public class ProcessorResource extends ApplicationResource {
 
                 // ensure there is an updated entity (result of merging) and prune the response as necessary
                 if (entity != null && !nodewise) {
-                    entity.getProcessorStatus().setNodeStatuses(null);
+                    entity.getProcessorStatus().setNodeSnapshots(null);
                 }
 
                 return nodeResponse.getResponse();

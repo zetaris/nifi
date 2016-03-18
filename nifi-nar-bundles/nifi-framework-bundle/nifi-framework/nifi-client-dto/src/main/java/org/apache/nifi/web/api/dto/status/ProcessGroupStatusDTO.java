@@ -32,8 +32,8 @@ public class ProcessGroupStatusDTO implements Cloneable {
     private String name;
     private Date statsLastRefreshed;
 
-    private ProcessGroupStatusSnapshotDTO aggregateStatus;
-    private List<NodeProcessGroupStatusSnapshotDTO> nodeStatuses;
+    private ProcessGroupStatusSnapshotDTO aggregateSnapshot;
+    private List<NodeProcessGroupStatusSnapshotDTO> nodeSnapshots;
 
     @ApiModelProperty("The ID of the Process Group")
     public String getId() {
@@ -54,22 +54,22 @@ public class ProcessGroupStatusDTO implements Cloneable {
     }
 
     @ApiModelProperty("The aggregate status of all nodes in the cluster")
-    public ProcessGroupStatusSnapshotDTO getAggregateStatus() {
-        return aggregateStatus;
+    public ProcessGroupStatusSnapshotDTO getAggregateSnapshot() {
+        return aggregateSnapshot;
     }
 
-    public void setAggregateStatus(ProcessGroupStatusSnapshotDTO aggregateStatus) {
-        this.aggregateStatus = aggregateStatus;
+    public void setAggregateSnapshot(ProcessGroupStatusSnapshotDTO aggregateSnapshot) {
+        this.aggregateSnapshot = aggregateSnapshot;
     }
 
     @ApiModelProperty("The status reported by each node in the cluster. If the NiFi instance is a standalone instance, rather than "
         + "a clustered instance, this value may be null.")
-    public List<NodeProcessGroupStatusSnapshotDTO> getNodeStatuses() {
-        return nodeStatuses;
+    public List<NodeProcessGroupStatusSnapshotDTO> getNodeSnapshots() {
+        return nodeSnapshots;
     }
 
-    public void setNodeStatuses(List<NodeProcessGroupStatusSnapshotDTO> nodeStatuses) {
-        this.nodeStatuses = nodeStatuses;
+    public void setNodeSnapshots(List<NodeProcessGroupStatusSnapshotDTO> nodeSnapshots) {
+        this.nodeSnapshots = nodeSnapshots;
     }
 
     /**

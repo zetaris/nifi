@@ -1957,67 +1957,84 @@ nf.SummaryTable = (function () {
      * Refreshes the system diagnostics.
      */
     var refreshSystemDiagnostics = function () {
+        var systemDiagnosticsUri = config.urls.systemDiagnostics;
+
+        // add the parameter if appropriate
+        var parameters = {};
+        if (!nf.Common.isNull(clusterNodeId)) {
+            parameters['clusterNodeId'] = clusterNodeId;
+        }
+
+        // update the status uri if appropriate
+        if (!$.isEmptyObject(parameters)) {
+            systemDiagnosticsUri += '?' + $.param(parameters);
+        }
+
         return $.ajax({
             type: 'GET',
-            url: nf.SummaryTable.systemDiagnosticsUrl,
+            url: systemDiagnosticsUri,
+            data: {
+                nodewise: true
+            },
             dataType: 'json'
         }).done(function (response) {
             var systemDiagnostics = response.systemDiagnostics;
+            var aggregateSnapshot = systemDiagnostics.aggregateSnapshot;
 
             // heap
-            $('#max-heap').text(systemDiagnostics.maxHeap);
-            $('#total-heap').text(systemDiagnostics.totalHeap);
-            $('#used-heap').text(systemDiagnostics.usedHeap);
-            $('#free-heap').text(systemDiagnostics.freeHeap);
+            $('#max-heap').text(aggregateSnapshot.maxHeap);
+            $('#total-heap').text(aggregateSnapshot.totalHeap);
+            $('#used-heap').text(aggregateSnapshot.usedHeap);
+            $('#free-heap').text(aggregateSnapshot.freeHeap);
 
             // ensure the heap utilization could be calculated
-            if (nf.Common.isDefinedAndNotNull(systemDiagnostics.heapUtilization)) {
-                $('#utilization-heap').text('(' + systemDiagnostics.heapUtilization + ')');
+            if (nf.Common.isDefinedAndNotNull(aggregateSnapshot.heapUtilization)) {
+                $('#utilization-heap').text('(' + aggregateSnapshot.heapUtilization + ')');
             } else {
                 $('#utilization-heap').text('');
             }
 
             // non heap
-            $('#max-non-heap').text(systemDiagnostics.maxNonHeap);
-            $('#total-non-heap').text(systemDiagnostics.totalNonHeap);
-            $('#used-non-heap').text(systemDiagnostics.usedNonHeap);
-            $('#free-non-heap').text(systemDiagnostics.freeNonHeap);
+            $('#max-non-heap').text(aggregateSnapshot.maxNonHeap);
+            $('#total-non-heap').text(aggregateSnapshot.totalNonHeap);
+            $('#used-non-heap').text(aggregateSnapshot.usedNonHeap);
+            $('#free-non-heap').text(aggregateSnapshot.freeNonHeap);
 
             // enure the non heap utilization could be calculated
-            if (nf.Common.isDefinedAndNotNull(systemDiagnostics.nonHeapUtilization)) {
-                $('#utilization-non-heap').text('(' + systemDiagnostics.nonHeapUtilization + ')');
+            if (nf.Common.isDefinedAndNotNull(aggregateSnapshot.nonHeapUtilization)) {
+                $('#utilization-non-heap').text('(' + aggregateSnapshot.nonHeapUtilization + ')');
             } else {
                 $('#utilization-non-heap').text('');
             }
 
             // garbage collection
             var garbageCollectionContainer = $('#garbage-collection-table tbody').empty();
-            $.each(systemDiagnostics.garbageCollection, function (_, garbageCollection) {
+            $.each(aggregateSnapshot.garbageCollection, function (_, garbageCollection) {
                 addGarbageCollection(garbageCollectionContainer, garbageCollection);
             });
 
             // available processors
-            $('#available-processors').text(systemDiagnostics.availableProcessors);
+            $('#available-processors').text(aggregateSnapshot.availableProcessors);
 
             // load
-            if (nf.Common.isDefinedAndNotNull(systemDiagnostics.processorLoadAverage)) {
-                $('#processor-load-average').text(nf.Common.formatFloat(systemDiagnostics.processorLoadAverage));
+            if (nf.Common.isDefinedAndNotNull(aggregateSnapshot.processorLoadAverage)) {
+                $('#processor-load-average').text(nf.Common.formatFloat(aggregateSnapshot.processorLoadAverage));
             } else {
-                $('#processor-load-average').html(nf.Common.formatValue(systemDiagnostics.processorLoadAverage));
+                $('#processor-load-average').html(nf.Common.formatValue(aggregateSnapshot.processorLoadAverage));
             }
 
             // database storage usage
             var flowFileRepositoryStorageUsageContainer = $('#flow-file-repository-storage-usage-container').empty();
-            addStorageUsage(flowFileRepositoryStorageUsageContainer, systemDiagnostics.flowFileRepositoryStorageUsage);
+            addStorageUsage(flowFileRepositoryStorageUsageContainer, aggregateSnapshot.flowFileRepositoryStorageUsage);
 
             // database storage usage
             var contentRepositoryUsageContainer = $('#content-repository-storage-usage-container').empty();
-            $.each(systemDiagnostics.contentRepositoryStorageUsage, function (_, contentRepository) {
+            $.each(aggregateSnapshot.contentRepositoryStorageUsage, function (_, contentRepository) {
                 addStorageUsage(contentRepositoryUsageContainer, contentRepository);
             });
 
             // update the stats last refreshed timestamp
-            $('#system-diagnostics-last-refreshed').text(systemDiagnostics.statsLastRefreshed);
+            $('#system-diagnostics-last-refreshed').text(aggregateSnapshot.statsLastRefreshed);
         }).fail(nf.Common.handleAjaxError);
     };
 
@@ -2076,39 +2093,39 @@ nf.SummaryTable = (function () {
      * @argument {array} inputPortItems                 The input port data
      * @argument {array} outputPortItems                The input port data
      * @argument {array} remoteProcessGroupItems        The remote process group data
-     * @argument {object} aggregateStatus            The process group status
+     * @argument {object} aggregateSnapshot            The process group status
      */
-    var populateProcessGroupStatus = function (processorItems, connectionItems, processGroupItems, inputPortItems, outputPortItems, remoteProcessGroupItems, aggregateStatus) {
+    var populateProcessGroupStatus = function (processorItems, connectionItems, processGroupItems, inputPortItems, outputPortItems, remoteProcessGroupItems, aggregateSnapshot) {
         // add the processors to the summary grid
-        $.each(aggregateStatus.processorStatusSnapshots, function (i, procStatus) {
+        $.each(aggregateSnapshot.processorStatusSnapshots, function (i, procStatus) {
             processorItems.push(procStatus);
         });
 
         // add the processors to the summary grid
-        $.each(aggregateStatus.connectionStatusSnapshots, function (i, connStatus) {
+        $.each(aggregateSnapshot.connectionStatusSnapshots, function (i, connStatus) {
             connectionItems.push(connStatus);
         });
 
         // add the input ports to the summary grid
-        $.each(aggregateStatus.inputPortStatusSnapshots, function (i, portStatus) {
+        $.each(aggregateSnapshot.inputPortStatusSnapshots, function (i, portStatus) {
             inputPortItems.push(portStatus);
         });
 
         // add the input ports to the summary grid
-        $.each(aggregateStatus.outputPortStatusSnapshots, function (i, portStatus) {
+        $.each(aggregateSnapshot.outputPortStatusSnapshots, function (i, portStatus) {
             outputPortItems.push(portStatus);
         });
 
         // add the input ports to the summary grid
-        $.each(aggregateStatus.remoteProcessGroupStatusSnapshots, function (i, rpgStatus) {
+        $.each(aggregateSnapshot.remoteProcessGroupStatusSnapshots, function (i, rpgStatus) {
             remoteProcessGroupItems.push(rpgStatus);
         });
         
         // add the process group status as well
-        processGroupItems.push(aggregateStatus);
+        processGroupItems.push(aggregateSnapshot);
 
         // add any child group's status
-        $.each(aggregateStatus.processGroupStatusSnapshots, function (i, childProcessGroup) {
+        $.each(aggregateSnapshot.processGroupStatusSnapshots, function (i, childProcessGroup) {
             populateProcessGroupStatus(processorItems, connectionItems, processGroupItems, inputPortItems, outputPortItems, remoteProcessGroupItems, childProcessGroup);
         });
     };
@@ -2162,11 +2179,11 @@ nf.SummaryTable = (function () {
                 var clusterProcessors = [];
 
                 // populate the table
-                $.each(processorStatus.nodeStatuses, function (i, nodeStatus) {
-                    var snapshot = nodeStatus.statusSnapshot;
+                $.each(processorStatus.nodeSnapshots, function (i, nodeSnapshot) {
+                    var snapshot = nodeSnapshot.statusSnapshot;
                     clusterProcessors.push({
-                        id: nodeStatus.nodeId,
-                        node: nodeStatus.address + ':' + nodeStatus.apiPort,
+                        id: nodeSnapshot.nodeId,
+                        node: nodeSnapshot.address + ':' + nodeSnapshot.apiPort,
                         runStatus: snapshot.runStatus,
                         activeThreadCount: snapshot.activeThreadCount,
                         input: snapshot.input,
@@ -2219,11 +2236,11 @@ nf.SummaryTable = (function () {
                 var clusterConnections = [];
 
                 // populate the table
-                $.each(connectionStatus.nodeStatuses, function (i, nodeStatus) {
-                    var snapshot = nodeStatus.statusSnapshot;
+                $.each(connectionStatus.nodeSnapshots, function (i, nodeSnapshot) {
+                    var snapshot = nodeSnapshot.statusSnapshot;
                     clusterConnections.push({
-                        id: nodeStatus.nodeId,
-                        node: nodeStatus.address + ':' + nodeStatus.apiPort,
+                        id: nodeSnapshot.nodeId,
+                        node: nodeSnapshot.address + ':' + nodeSnapshot.apiPort,
                         input: snapshot.input,
                         queued: snapshot.queued,
                         queuedCount: snapshot.queuedCount,
@@ -2273,11 +2290,11 @@ nf.SummaryTable = (function () {
                 var clusterProcessGroups = [];
 
                 // populate the table
-                $.each(processGroupStatus.nodeStatuses, function (i, nodeStatus) {
-                    var snapshot = nodeStatus.statusSnapshot;
+                $.each(processGroupStatus.nodeSnapshots, function (i, nodeSnapshot) {
+                    var snapshot = nodeSnapshot.statusSnapshot;
                     clusterProcessGroups.push({
-                        id: nodeStatus.nodeId,
-                        node: nodeStatus.address + ':' + nodeStatus.apiPort,
+                        id: nodeSnapshot.nodeId,
+                        node: nodeSnapshot.address + ':' + nodeSnapshot.apiPort,
                         activeThreadCount: snapshot.activeThreadCount,
                         transferred: snapshot.transferred,
                         input: snapshot.input,
@@ -2332,11 +2349,11 @@ nf.SummaryTable = (function () {
                 var clusterInputPorts = [];
 
                 // populate the table
-                $.each(inputPortStatus.nodeStatuses, function (i, nodeStatus) {
-                    var snapshot = nodeStatus.statusSnapshot;
+                $.each(inputPortStatus.nodeSnapshots, function (i, nodeSnapshot) {
+                    var snapshot = nodeSnapshot.statusSnapshot;
                     clusterInputPorts.push({
-                        id: nodeStatus.nodeId,
-                        node: nodeStatus.address + ':' + nodeStatus.apiPort,
+                        id: nodeSnapshot.nodeId,
+                        node: nodeSnapshot.address + ':' + nodeSnapshot.apiPort,
                         runStatus: snapshot.runStatus,
                         activeThreadCount: snapshot.activeThreadCount,
                         output: snapshot.output
@@ -2384,11 +2401,11 @@ nf.SummaryTable = (function () {
                 var clusterOutputPorts = [];
 
                 // populate the table
-                $.each(outputPortStatus.nodeStatuses, function (i, nodeStatus) {
-                    var snapshot = nodeStatus.statusSnapshot;
+                $.each(outputPortStatus.nodeSnapshots, function (i, nodeSnapshot) {
+                    var snapshot = nodeSnapshot.statusSnapshot;
                     clusterOutputPorts.push({
-                        id: nodeStatus.nodeId,
-                        node: nodeStatus.address + ':' + nodeStatus.apiPort,
+                        id: nodeSnapshot.nodeId,
+                        node: nodeSnapshot.address + ':' + nodeSnapshot.apiPort,
                         runStatus: snapshot.runStatus,
                         activeThreadCount: snapshot.activeThreadCount,
                         input: snapshot.input
@@ -2436,11 +2453,11 @@ nf.SummaryTable = (function () {
                 var clusterRemoteProcessGroups = [];
 
                 // populate the table
-                $.each(remoteProcessGroupStatus.nodeStatuses, function (i, nodeStatus) {
-                    var snapshot = nodeStatus.statusSnapshot;
+                $.each(remoteProcessGroupStatus.nodeSnapshots, function (i, nodeSnapshot) {
+                    var snapshot = nodeSnapshot.statusSnapshot;
                     clusterRemoteProcessGroups.push({
-                        id: nodeStatus.nodeId,
-                        node: nodeStatus.address + ':' + nodeStatus.apiPort,
+                        id: nodeSnapshot.nodeId,
+                        node: nodeSnapshot.address + ':' + nodeSnapshot.apiPort,
                         targetUri: snapshot.targetUri,
                         transmissionStatus: snapshot.transmissionStatus,
                         sent: snapshot.sent,
@@ -2471,19 +2488,11 @@ nf.SummaryTable = (function () {
     return {
         
         /**
-         * URL for loading system diagnostics.
-         */
-        systemDiagnosticsUrl: null,
-        
-        /**
          * Initializes the status table.
          * 
          * @argument {boolean} isClustered Whether or not this NiFi is clustered.
          */
         init: function (isClustered) {
-            // initialize the summary urls
-            nf.SummaryTable.systemDiagnosticsUrl = config.urls.systemDiagnostics;
-
             return $.Deferred(function (deferred) {
                 loadChartCapabilities().done(function () {
                     // initialize the processor/connection details dialog
@@ -2568,9 +2577,9 @@ nf.SummaryTable = (function () {
                 dataType: 'json'
             }).done(function (response) {
                 var processGroupStatus = response.processGroupStatus;
-                var aggregateStatus = processGroupStatus.aggregateStatus;
+                var aggregateSnapshot = processGroupStatus.aggregateSnapshot;
 
-                if (nf.Common.isDefinedAndNotNull(aggregateStatus)) {
+                if (nf.Common.isDefinedAndNotNull(aggregateSnapshot)) {
                     // remove any tooltips from the processor table
                     var processorsGridElement = $('#processor-summary-table');
                     nf.Common.cleanUpTooltips(processorsGridElement, 'img.has-bulletins');
@@ -2623,7 +2632,7 @@ nf.SummaryTable = (function () {
                     var remoteProcessGroupItems = [];
 
                     // populate the tables
-                    populateProcessGroupStatus(processorItems, connectionItems, processGroupItems, inputPortItems, outputPortItems, remoteProcessGroupItems, aggregateStatus);
+                    populateProcessGroupStatus(processorItems, connectionItems, processGroupItems, inputPortItems, outputPortItems, remoteProcessGroupItems, aggregateSnapshot);
 
                     // update the processors
                     processorsData.setItems(processorItems);

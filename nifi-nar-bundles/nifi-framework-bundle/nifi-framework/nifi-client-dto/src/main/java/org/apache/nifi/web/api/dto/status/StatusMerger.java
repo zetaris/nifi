@@ -83,16 +83,16 @@ public class StatusMerger {
 
 
     public static void merge(final ProcessGroupStatusDTO target, final ProcessGroupStatusDTO toMerge, final String nodeId, final String nodeAddress, final Integer nodeApiPort) {
-        merge(target.getAggregateStatus(), toMerge.getAggregateStatus());
+        merge(target.getAggregateSnapshot(), toMerge.getAggregateSnapshot());
 
-        if (target.getNodeStatuses() != null) {
+        if (target.getNodeSnapshots() != null) {
             final NodeProcessGroupStatusSnapshotDTO nodeSnapshot = new NodeProcessGroupStatusSnapshotDTO();
-            nodeSnapshot.setStatusSnapshot(toMerge.getAggregateStatus());
+            nodeSnapshot.setStatusSnapshot(toMerge.getAggregateSnapshot());
             nodeSnapshot.setAddress(nodeAddress);
             nodeSnapshot.setApiPort(nodeApiPort);
             nodeSnapshot.setNodeId(nodeId);
 
-            target.getNodeStatuses().add(nodeSnapshot);
+            target.getNodeSnapshots().add(nodeSnapshot);
         }
     }
 
@@ -261,58 +261,58 @@ public class StatusMerger {
     }
 
     public static void merge(final RemoteProcessGroupStatusDTO target, final RemoteProcessGroupStatusDTO toMerge, final String nodeId, final String nodeAddress, final Integer nodeApiPort) {
-        merge(target.getAggregateStatus(), toMerge.getAggregateStatus());
+        merge(target.getAggregateSnapshot(), toMerge.getAggregateSnapshot());
 
-        if (target.getNodeStatuses() != null) {
+        if (target.getNodeSnapshots() != null) {
             final NodeRemoteProcessGroupStatusSnapshotDTO nodeSnapshot = new NodeRemoteProcessGroupStatusSnapshotDTO();
-            nodeSnapshot.setStatusSnapshot(toMerge.getAggregateStatus());
+            nodeSnapshot.setStatusSnapshot(toMerge.getAggregateSnapshot());
             nodeSnapshot.setAddress(nodeAddress);
             nodeSnapshot.setApiPort(nodeApiPort);
             nodeSnapshot.setNodeId(nodeId);
 
-            target.getNodeStatuses().add(nodeSnapshot);
+            target.getNodeSnapshots().add(nodeSnapshot);
         }
     }
 
     public static void merge(final PortStatusDTO target, final PortStatusDTO toMerge, final String nodeId, final String nodeAddress, final Integer nodeApiPort) {
-        merge(target.getAggregateStatus(), toMerge.getAggregateStatus());
+        merge(target.getAggregateSnapshot(), toMerge.getAggregateSnapshot());
 
-        if (target.getNodeStatuses() != null) {
+        if (target.getNodeSnapshots() != null) {
             final NodePortStatusSnapshotDTO nodeSnapshot = new NodePortStatusSnapshotDTO();
-            nodeSnapshot.setStatusSnapshot(toMerge.getAggregateStatus());
+            nodeSnapshot.setStatusSnapshot(toMerge.getAggregateSnapshot());
             nodeSnapshot.setAddress(nodeAddress);
             nodeSnapshot.setApiPort(nodeApiPort);
             nodeSnapshot.setNodeId(nodeId);
 
-            target.getNodeStatuses().add(nodeSnapshot);
+            target.getNodeSnapshots().add(nodeSnapshot);
         }
     }
 
     public static void merge(final ConnectionStatusDTO target, final ConnectionStatusDTO toMerge, final String nodeId, final String nodeAddress, final Integer nodeApiPort) {
-        merge(target.getAggregateStatus(), toMerge.getAggregateStatus());
+        merge(target.getAggregateSnapshot(), toMerge.getAggregateSnapshot());
 
-        if (target.getNodeStatuses() != null) {
+        if (target.getNodeSnapshots() != null) {
             final NodeConnectionStatusSnapshotDTO nodeSnapshot = new NodeConnectionStatusSnapshotDTO();
-            nodeSnapshot.setStatusSnapshot(toMerge.getAggregateStatus());
+            nodeSnapshot.setStatusSnapshot(toMerge.getAggregateSnapshot());
             nodeSnapshot.setAddress(nodeAddress);
             nodeSnapshot.setApiPort(nodeApiPort);
             nodeSnapshot.setNodeId(nodeId);
 
-            target.getNodeStatuses().add(nodeSnapshot);
+            target.getNodeSnapshots().add(nodeSnapshot);
         }
     }
 
     public static void merge(final ProcessorStatusDTO target, final ProcessorStatusDTO toMerge, final String nodeId, final String nodeAddress, final Integer nodeApiPort) {
-        merge(target.getAggregateStatus(), toMerge.getAggregateStatus());
+        merge(target.getAggregateSnapshot(), toMerge.getAggregateSnapshot());
 
-        if (target.getNodeStatuses() != null) {
+        if (target.getNodeSnapshots() != null) {
             final NodeProcessorStatusSnapshotDTO nodeSnapshot = new NodeProcessorStatusSnapshotDTO();
-            nodeSnapshot.setStatusSnapshot(toMerge.getAggregateStatus());
+            nodeSnapshot.setStatusSnapshot(toMerge.getAggregateSnapshot());
             nodeSnapshot.setAddress(nodeAddress);
             nodeSnapshot.setApiPort(nodeApiPort);
             nodeSnapshot.setNodeId(nodeId);
 
-            target.getNodeStatuses().add(nodeSnapshot);
+            target.getNodeSnapshots().add(nodeSnapshot);
         }
     }
 
@@ -441,7 +441,7 @@ public class StatusMerger {
     public static void merge(final SystemDiagnosticsDTO target, final SystemDiagnosticsDTO toMerge, final String nodeId, final String nodeAddress, final Integer nodeApiPort) {
         merge(target.getAggregateSnapshot(), toMerge.getAggregateSnapshot());
 
-        List<NodeSystemDiagnosticsSnapshotDTO> nodeSnapshots = target.getNodeSnapshot();
+        List<NodeSystemDiagnosticsSnapshotDTO> nodeSnapshots = target.getNodeSnapshots();
         if (nodeSnapshots == null) {
             nodeSnapshots = new ArrayList<>();
         }
@@ -453,7 +453,7 @@ public class StatusMerger {
         nodeSnapshot.setSnapshot(toMerge.getAggregateSnapshot());
 
         nodeSnapshots.add(nodeSnapshot);
-        target.setNodeSnapshot(nodeSnapshots);
+        target.setNodeSnapshots(nodeSnapshots);
     }
 
     public static void merge(final SystemDiagnosticsSnapshotDTO target, final SystemDiagnosticsSnapshotDTO toMerge) {

@@ -722,7 +722,7 @@ public final class DtoFactory {
         dto.setStatsLastRefreshed(new Date());
 
         final RemoteProcessGroupStatusSnapshotDTO snapshot = new RemoteProcessGroupStatusSnapshotDTO();
-        dto.setAggregateStatus(snapshot);
+        dto.setAggregateSnapshot(snapshot);
 
         snapshot.setId(remoteProcessGroupStatus.getId());
         snapshot.setGroupId(remoteProcessGroupStatus.getGroupId());
@@ -748,7 +748,7 @@ public final class DtoFactory {
         processGroupStatusDto.setStatsLastRefreshed(new Date());
 
         final ProcessGroupStatusSnapshotDTO snapshot = new ProcessGroupStatusSnapshotDTO();
-        processGroupStatusDto.setAggregateStatus(snapshot);
+        processGroupStatusDto.setAggregateSnapshot(snapshot);
 
         snapshot.setId(processGroupStatus.getId());
         snapshot.setName(processGroupStatus.getName());
@@ -777,7 +777,7 @@ public final class DtoFactory {
         if (processorStatusCollection != null) {
             for (final ProcessorStatus processorStatus : processorStatusCollection) {
                 final ProcessorStatusDTO processorStatusDto = createProcessorStatusDto(processorStatus);
-                processorStatDtoCollection.add(processorStatusDto.getAggregateStatus());
+                processorStatDtoCollection.add(processorStatusDto.getAggregateSnapshot());
             }
         }
 
@@ -788,7 +788,7 @@ public final class DtoFactory {
         if (connectionStatusCollection != null) {
             for (final ConnectionStatus connectionStatus : connectionStatusCollection) {
                 final ConnectionStatusDTO connectionStatusDto = createConnectionStatusDto(connectionStatus);
-                connectionStatusDtoCollection.add(connectionStatusDto.getAggregateStatus());
+                connectionStatusDtoCollection.add(connectionStatusDto.getAggregateSnapshot());
             }
         }
 
@@ -799,7 +799,7 @@ public final class DtoFactory {
         if (childProcessGroupStatusCollection != null) {
             for (final ProcessGroupStatus childProcessGroupStatus : childProcessGroupStatusCollection) {
                 final ProcessGroupStatusDTO childProcessGroupStatusDto = createProcessGroupStatusDto(bulletinRepository, childProcessGroupStatus);
-                childProcessGroupStatusDtoCollection.add(childProcessGroupStatusDto.getAggregateStatus());
+                childProcessGroupStatusDtoCollection.add(childProcessGroupStatusDto.getAggregateSnapshot());
             }
         }
 
@@ -810,7 +810,7 @@ public final class DtoFactory {
         if (childRemoteProcessGroupStatusCollection != null) {
             for (final RemoteProcessGroupStatus childRemoteProcessGroupStatus : childRemoteProcessGroupStatusCollection) {
                 final RemoteProcessGroupStatusDTO childRemoteProcessGroupStatusDto = createRemoteProcessGroupStatusDto(childRemoteProcessGroupStatus);
-                childRemoteProcessGroupStatusDtoCollection.add(childRemoteProcessGroupStatusDto.getAggregateStatus());
+                childRemoteProcessGroupStatusDtoCollection.add(childRemoteProcessGroupStatusDto.getAggregateSnapshot());
             }
         }
 
@@ -821,7 +821,7 @@ public final class DtoFactory {
         if (inputPortStatusCollection != null) {
             for (final PortStatus portStatus : inputPortStatusCollection) {
                 final PortStatusDTO portStatusDto = createPortStatusDto(portStatus);
-                inputPortStatusDtoCollection.add(portStatusDto.getAggregateStatus());
+                inputPortStatusDtoCollection.add(portStatusDto.getAggregateSnapshot());
             }
         }
 
@@ -832,7 +832,7 @@ public final class DtoFactory {
         if (outputPortStatusCollection != null) {
             for (final PortStatus portStatus : outputPortStatusCollection) {
                 final PortStatusDTO portStatusDto = createPortStatusDto(portStatus);
-                outputPortStatusDtoCollection.add(portStatusDto.getAggregateStatus());
+                outputPortStatusDtoCollection.add(portStatusDto.getAggregateSnapshot());
             }
         }
 
@@ -851,7 +851,7 @@ public final class DtoFactory {
         connectionStatusDto.setStatsLastRefreshed(new Date());
 
         final ConnectionStatusSnapshotDTO snapshot = new ConnectionStatusSnapshotDTO();
-        connectionStatusDto.setAggregateStatus(snapshot);
+        connectionStatusDto.setAggregateSnapshot(snapshot);
 
         snapshot.setId(connectionStatus.getId());
         snapshot.setGroupId(connectionStatus.getGroupId());
@@ -880,7 +880,7 @@ public final class DtoFactory {
         dto.setStatsLastRefreshed(new Date());
 
         final ProcessorStatusSnapshotDTO snapshot = new ProcessorStatusSnapshotDTO();
-        dto.setAggregateStatus(snapshot);
+        dto.setAggregateSnapshot(snapshot);
 
         snapshot.setId(procStatus.getId());
         snapshot.setGroupId(procStatus.getGroupId());
@@ -925,7 +925,7 @@ public final class DtoFactory {
         dto.setStatsLastRefreshed(new Date());
 
         final PortStatusSnapshotDTO snapshot = new PortStatusSnapshotDTO();
-        dto.setAggregateStatus(snapshot);
+        dto.setAggregateSnapshot(snapshot);
 
         snapshot.setId(portStatus.getId());
         snapshot.setGroupId(portStatus.getGroupId());
