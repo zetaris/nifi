@@ -16,25 +16,6 @@
  */
 package org.apache.nifi.web;
 
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.ListIterator;
-import java.util.Map;
-import java.util.Set;
-import java.util.TimeZone;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-
-import javax.ws.rs.WebApplicationException;
-
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.action.Action;
@@ -46,7 +27,6 @@ import org.apache.nifi.admin.service.AccountNotFoundException;
 import org.apache.nifi.admin.service.AuditService;
 import org.apache.nifi.admin.service.UserService;
 import org.apache.nifi.authorization.Authority;
-import org.apache.nifi.cluster.HeartbeatPayload;
 import org.apache.nifi.cluster.context.ClusterContext;
 import org.apache.nifi.cluster.context.ClusterContextThreadLocal;
 import org.apache.nifi.cluster.manager.exception.UnknownNodeException;
@@ -72,7 +52,6 @@ import org.apache.nifi.controller.repository.claim.ContentDirection;
 import org.apache.nifi.controller.service.ControllerServiceNode;
 import org.apache.nifi.controller.service.ControllerServiceReference;
 import org.apache.nifi.controller.service.ControllerServiceState;
-import org.apache.nifi.controller.status.ProcessGroupStatus;
 import org.apache.nifi.diagnostics.SystemDiagnostics;
 import org.apache.nifi.groups.ProcessGroup;
 import org.apache.nifi.groups.ProcessGroupCounts;
@@ -137,10 +116,8 @@ import org.apache.nifi.web.api.dto.provenance.ProvenanceEventDTO;
 import org.apache.nifi.web.api.dto.provenance.ProvenanceOptionsDTO;
 import org.apache.nifi.web.api.dto.provenance.lineage.LineageDTO;
 import org.apache.nifi.web.api.dto.search.SearchResultsDTO;
-import org.apache.nifi.web.api.dto.status.ClusterStatusDTO;
 import org.apache.nifi.web.api.dto.status.ConnectionStatusDTO;
 import org.apache.nifi.web.api.dto.status.ControllerStatusDTO;
-import org.apache.nifi.web.api.dto.status.NodeStatusDTO;
 import org.apache.nifi.web.api.dto.status.PortStatusDTO;
 import org.apache.nifi.web.api.dto.status.ProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.ProcessorStatusDTO;
@@ -164,6 +141,24 @@ import org.apache.nifi.web.util.SnippetUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
+
+import javax.ws.rs.WebApplicationException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Map;
+import java.util.Set;
+import java.util.TimeZone;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Implementation of NiFiServiceFacade that performs revision checking.
@@ -2833,50 +2828,6 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
 
         final String userDn = user.getIdentity();
         clusterManager.deleteNode(nodeId, userDn);
-    }
-
-    @Override
-    public ClusterStatusDTO getClusterStatus() {
-
-        // create cluster status dto
-        final ClusterStatusDTO clusterStatusDto = new ClusterStatusDTO();
-
-        // populate node status dtos
-        final Collection<NodeStatusDTO> nodeStatusDtos = new ArrayList<>();
-        clusterStatusDto.setNodeStatus(nodeStatusDtos);
-
-        for (final Node node : clusterManager.getNodes()) {
-
-            if (Node.Status.CONNECTED != node.getStatus()) {
-                continue;
-            }
-
-            final HeartbeatPayload nodeHeartbeatPayload = node.getHeartbeatPayload();
-            if (nodeHeartbeatPayload == null) {
-                continue;
-            }
-
-            final ProcessGroupStatus nodeProcessGroupStatus = nodeHeartbeatPayload.getProcessGroupStatus();
-            if (nodeProcessGroupStatus == null) {
-                continue;
-            }
-
-            final ProcessGroupStatusDTO nodeProcessGroupStatusDto = dtoFactory.createProcessGroupStatusDto(clusterManager.getBulletinRepository(), nodeProcessGroupStatus);
-
-            // create node status dto
-            final NodeStatusDTO nodeStatusDto = new NodeStatusDTO();
-            nodeStatusDtos.add(nodeStatusDto);
-
-            // populate the status
-            nodeStatusDto.setControllerStatus(nodeProcessGroupStatusDto);
-
-            // create and add node dto
-            final String nodeId = node.getNodeId().getId();
-            nodeStatusDto.setNode(dtoFactory.createNodeDTO(node, clusterManager.getNodeEvents(nodeId), isPrimaryNode(nodeId)));
-
-        }
-
-        return clusterStatusDto;
     }
 
     @Override

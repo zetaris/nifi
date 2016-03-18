@@ -1548,13 +1548,6 @@ public interface NiFiServiceFacade {
      */
     void deleteNode(String nodeId);
 
-    /**
-     * Returns the cluster's status.
-     *
-     * @return The cluster status
-     */
-    ClusterStatusDTO getClusterStatus();
-
     // ----------------------------------------
     // BulletinBoard methods
     // ----------------------------------------

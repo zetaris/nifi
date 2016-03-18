@@ -247,7 +247,6 @@
     <bean id="clusterResource" class="org.apache.nifi.web.api.ClusterResource" scope="singleton">
         <property name="serviceFacade" ref="serviceFacade"/>
         <property name="properties" ref="nifiProperties"/>
-        <property name="clusterManager" ref="clusterManager"/>
     </bean>
     <bean id="nodeResource" class="org.apache.nifi.web.api.NodeResource" scope="singleton">
         <property name="serviceFacade" ref="serviceFacade"/>

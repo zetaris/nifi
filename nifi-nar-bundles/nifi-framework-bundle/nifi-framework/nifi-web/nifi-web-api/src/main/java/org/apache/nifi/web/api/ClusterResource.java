@@ -37,10 +37,8 @@ import org.apache.nifi.web.api.dto.ProcessorConfigDTO;
 import org.apache.nifi.web.api.dto.ProcessorDTO;
 import org.apache.nifi.web.api.dto.RevisionDTO;
 import org.apache.nifi.web.api.dto.search.NodeSearchResultDTO;
-import org.apache.nifi.web.api.dto.status.ClusterStatusDTO;
 import org.apache.nifi.web.api.entity.ClusterEntity;
 import org.apache.nifi.web.api.entity.ClusterSearchResultsEntity;
-import org.apache.nifi.web.api.entity.ClusterStatusEntity;
 import org.apache.nifi.web.api.entity.ProcessorEntity;
 import org.apache.nifi.web.api.request.ClientIdParameter;
 import org.apache.nifi.web.api.request.LongParameter;
@@ -77,7 +75,6 @@ public class ClusterResource extends ApplicationResource {
     private ResourceContext resourceContext;
     private NiFiServiceFacade serviceFacade;
     private NiFiProperties properties;
-    private WebClusterManager clusterManager;
 
     /**
      * Locates the ClusterConnection sub-resource.
@@ -91,62 +88,6 @@ public class ClusterResource extends ApplicationResource {
     )
     public NodeResource getNodeResource() {
         return resourceContext.getResource(NodeResource.class);
-    }
-
-    /**
-     * Gets the status of this NiFi cluster.
-     *
-     * @param clientId Optional client id. If the client id is not specified, a new one will be generated. This value (whether specified or generated) is included in the response.
-     * @return A clusterStatusEntity
-     */
-    @GET
-    @Consumes(MediaType.WILDCARD)
-    @Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML})
-    @Path("/status")
-    @PreAuthorize("hasAnyRole('ROLE_MONITOR', 'ROLE_DFM', 'ROLE_ADMIN')")
-    @ApiOperation(
-            value = "Gets the status of the cluster",
-            response = ClusterStatusEntity.class,
-            authorizations = {
-                @Authorization(value = "Read Only", type = "ROLE_MONITOR"),
-                @Authorization(value = "DFM", type = "ROLE_DFM"),
-                @Authorization(value = "Admin", type = "ROLE_ADMIN")
-            }
-    )
-    @ApiResponses(
-            value = {
-                @ApiResponse(code = 400, message = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
-                @ApiResponse(code = 401, message = "Client could not be authenticated."),
-                @ApiResponse(code = 403, message = "Client is not authorized to make this request."),
-                @ApiResponse(code = 409, message = "The request was valid but NiFi was not in the appropriate state to process it. Retrying the same request later may be successful.")
-            }
-    )
-    public Response getClusterStatus(
-            @ApiParam(
-                    value = "If the client id is not specified, new one will be generated. This value (whether specified or generated) is included in the response.",
-                    required = false
-            )
-            @QueryParam(CLIENT_ID) @DefaultValue(StringUtils.EMPTY) ClientIdParameter clientId) {
-
-        if (properties.isClusterManager()) {
-
-            ClusterStatusDTO dto = serviceFacade.getClusterStatus();
-
-            // create the revision
-            RevisionDTO revision = new RevisionDTO();
-            revision.setClientId(clientId.getClientId());
-
-            // create entity
-            final ClusterStatusEntity entity = new ClusterStatusEntity();
-            entity.setClusterStatus(dto);
-            entity.setRevision(revision);
-
-            // generate the response
-            return generateOkResponse(entity).build();
-        }
-
-        throw new IllegalClusterResourceRequestException("Only a cluster manager can process the request.");
-
     }
 
     /**
@@ -514,7 +455,4 @@ public class ClusterResource extends ApplicationResource {
         this.properties = properties;
     }
 
-    public void setClusterManager(WebClusterManager clusterManager) {
-        this.clusterManager = clusterManager;
-    }
 }
