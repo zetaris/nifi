@@ -17,11 +17,14 @@
 
 package org.apache.nifi.web.api.dto.status;
 
+import java.util.Date;
 import java.util.List;
 
 import javax.xml.bind.annotation.XmlType;
+import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
 import com.wordnik.swagger.annotations.ApiModelProperty;
+import org.apache.nifi.web.api.dto.util.TimeAdapter;
 
 @XmlType(name = "portStatus")
 public class PortStatusDTO {
@@ -30,6 +33,7 @@ public class PortStatusDTO {
     private String name;
     private Boolean transmitting;
     private String runStatus;
+    private Date statsLastRefreshed;
 
     private PortStatusSnapshotDTO aggregateStatus;
     private List<NodePortStatusSnapshotDTO> nodeStatuses;
@@ -101,5 +105,22 @@ public class PortStatusDTO {
 
     public void setNodeStatuses(List<NodePortStatusSnapshotDTO> nodeStatuses) {
         this.nodeStatuses = nodeStatuses;
+    }
+
+    /**
+     * When the status for this process group was calculated.
+     *
+     * @return The the status was calculated
+     */
+    @XmlJavaTypeAdapter(TimeAdapter.class)
+    @ApiModelProperty(
+        value = "The time the status for the process group was last refreshed."
+    )
+    public Date getStatsLastRefreshed() {
+        return statsLastRefreshed;
+    }
+
+    public void setStatsLastRefreshed(Date statsLastRefreshed) {
+        this.statsLastRefreshed = statsLastRefreshed;
     }
 }

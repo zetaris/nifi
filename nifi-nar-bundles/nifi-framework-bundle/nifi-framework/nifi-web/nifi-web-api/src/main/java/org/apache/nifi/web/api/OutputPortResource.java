@@ -48,6 +48,7 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 
+import org.apache.nifi.cluster.manager.NodeResponse;
 import org.apache.nifi.cluster.manager.exception.UnknownNodeException;
 import org.apache.nifi.cluster.manager.impl.WebClusterManager;
 import org.apache.nifi.cluster.node.Node;
@@ -436,7 +437,15 @@ public class OutputPortResource extends ApplicationResource {
         if (properties.isClusterManager()) {
             // determine where this request should be sent
             if (clusterNodeId == null) {
-                return clusterManager.applyRequest(HttpMethod.GET, getAbsolutePath(), getRequestParameters(true), getHeaders()).getResponse();
+                final NodeResponse nodeResponse = clusterManager.applyRequest(HttpMethod.GET, getAbsolutePath(), getRequestParameters(true), getHeaders());
+                final PortStatusEntity entity = (PortStatusEntity) nodeResponse.getUpdatedEntity();
+
+                // ensure there is an updated entity (result of merging) and prune the response as necessary
+                if (entity != null && !nodewise) {
+                    entity.getPortStatus().setNodeStatuses(null);
+                }
+
+                return nodeResponse.getResponse();
             } else {
                 // get the target node and ensure it exists
                 final Node targetNode = clusterManager.getNode(clusterNodeId);
@@ -454,11 +463,6 @@ public class OutputPortResource extends ApplicationResource {
 
         // get the specified output port status
         final PortStatusDTO portStatus = serviceFacade.getOutputPortStatus(groupId, id);
-
-        // prune the response as necessary
-        if (!nodewise) {
-            portStatus.setNodeStatuses(null);
-        }
 
         // create the revision
         final RevisionDTO revision = new RevisionDTO();

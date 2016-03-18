@@ -75,7 +75,6 @@ public class ProcessGroupStatusSnapshotDTO implements Cloneable {
     private String sent;
 
     private Integer activeThreadCount = 0;
-    private Date statsLastRefreshed;
 
     /**
      * The id for the process group.
@@ -433,24 +432,6 @@ public class ProcessGroupStatusSnapshotDTO implements Cloneable {
         this.flowFilesReceived = flowFilesReceived;
     }
 
-    /**
-     * When the status for this process group was calculated.
-     *
-     * @return The the status was calculated
-     */
-    @XmlJavaTypeAdapter(TimeAdapter.class)
-    @ApiModelProperty(
-            value = "The time the status for the process group was last refreshed."
-    )
-    public Date getStatsLastRefreshed() {
-        return statsLastRefreshed;
-    }
-
-    public void setStatsLastRefreshed(Date statsLastRefreshed) {
-        this.statsLastRefreshed = statsLastRefreshed;
-    }
-
-
     public void setInput(String input) {
         this.input = input;
     }
@@ -528,7 +509,6 @@ public class ProcessGroupStatusSnapshotDTO implements Cloneable {
         other.setSent(getSent());
 
         other.setActiveThreadCount(getActiveThreadCount());
-        other.setStatsLastRefreshed(getStatsLastRefreshed());
 
         other.setConnectionStatusSnapshots(copy(getConnectionStatusSnapshots()));
         other.setProcessorStatusSnapshots(copy(getProcessorStatusSnapshots()));

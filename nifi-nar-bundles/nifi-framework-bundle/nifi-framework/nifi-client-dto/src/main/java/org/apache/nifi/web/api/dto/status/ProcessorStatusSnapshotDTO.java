@@ -46,7 +46,7 @@ public class ProcessorStatusSnapshotDTO implements Cloneable {
     private String output;
 
     private Integer taskCount = 0;
-    private Long taskDurationNanos = 0L;
+    private Long tasksDurationNanos = 0L;
     private String tasks;
     private String tasksDuration;
     private Integer activeThreadCount = 0;
@@ -263,12 +263,12 @@ public class ProcessorStatusSnapshotDTO implements Cloneable {
     }
 
     @ApiModelProperty("The number of nanoseconds that this Processor has spent running in the last 5 minutes")
-    public Long getTaskDuration() {
-        return taskDurationNanos;
+    public Long getTasksDurationNanos() {
+        return tasksDurationNanos;
     }
 
-    public void setTaskDuration(Long taskNanos) {
-        this.taskDurationNanos = taskNanos;
+    public void setTasksDurationNanos(Long taskNanos) {
+        this.tasksDurationNanos = taskNanos;
     }
 
     @Override
@@ -287,7 +287,8 @@ public class ProcessorStatusSnapshotDTO implements Cloneable {
         other.setFlowFilesOut(getFlowFilesOut());
         other.setBytesOut(getBytesOut());
         other.setTaskCount(getTaskCount());
-        other.setTaskDuration(getTaskDuration());
+        other.setTasksDuration(getTasksDuration());
+        other.setTasksDurationNanos(getTasksDurationNanos());
         other.setActiveThreadCount(getActiveThreadCount());
         other.setInput(getInput());
         other.setOutput(getOutput());

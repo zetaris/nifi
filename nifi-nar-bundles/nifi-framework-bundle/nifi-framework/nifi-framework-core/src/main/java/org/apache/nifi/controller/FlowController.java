@@ -2112,7 +2112,6 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         final ProcessGroupStatus status = new ProcessGroupStatus();
         status.setId(group.getIdentifier());
         status.setName(group.getName());
-        status.setCreationTimestamp(new Date().getTime());
         int activeGroupThreads = 0;
         long bytesRead = 0L;
         long bytesWritten = 0L;

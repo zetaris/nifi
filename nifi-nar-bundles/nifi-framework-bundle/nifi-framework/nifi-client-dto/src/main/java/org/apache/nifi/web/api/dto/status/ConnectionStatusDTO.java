@@ -18,24 +18,28 @@
 package org.apache.nifi.web.api.dto.status;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 import javax.xml.bind.annotation.XmlType;
+import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
 import com.wordnik.swagger.annotations.ApiModelProperty;
+import org.apache.nifi.web.api.dto.util.TimeAdapter;
 
 @XmlType(name = "connectionStatus")
 public class ConnectionStatusDTO implements Cloneable {
     private String id;
     private String groupId;
     private String name;
+    private Date statsLastRefreshed;
 
     private String sourceId;
     private String sourceName;
     private String destinationId;
     private String destinationName;
 
-    private ConnectionStatusSnapshotDTO aggregateSnapshot;
+    private ConnectionStatusSnapshotDTO aggregateStatus;
     private List<NodeConnectionStatusSnapshotDTO> nodeStatuses;
 
     @ApiModelProperty("The ID of the connection")
@@ -102,12 +106,12 @@ public class ConnectionStatusDTO implements Cloneable {
     }
 
     @ApiModelProperty("The status snapshot that represents the aggregate stats of the cluster")
-    public ConnectionStatusSnapshotDTO getAggregateSnapshot() {
-        return aggregateSnapshot;
+    public ConnectionStatusSnapshotDTO getAggregateStatus() {
+        return aggregateStatus;
     }
 
-    public void setAggregateSnapshot(ConnectionStatusSnapshotDTO aggregateSnapshot) {
-        this.aggregateSnapshot = aggregateSnapshot;
+    public void setAggregateStatus(ConnectionStatusSnapshotDTO aggregateStatus) {
+        this.aggregateStatus = aggregateStatus;
     }
 
     @ApiModelProperty("A list of status snapshots for each node")
@@ -117,6 +121,16 @@ public class ConnectionStatusDTO implements Cloneable {
 
     public void setNodeStatuses(List<NodeConnectionStatusSnapshotDTO> nodeStatuses) {
         this.nodeStatuses = nodeStatuses;
+    }
+
+    @XmlJavaTypeAdapter(TimeAdapter.class)
+    @ApiModelProperty("The timestamp of when the stats were last refreshed")
+    public Date getStatsLastRefreshed() {
+        return statsLastRefreshed;
+    }
+
+    public void setStatsLastRefreshed(Date statsLastRefreshed) {
+        this.statsLastRefreshed = statsLastRefreshed;
     }
 
     @Override
@@ -129,7 +143,7 @@ public class ConnectionStatusDTO implements Cloneable {
         other.setName(getName());
         other.setSourceId(getSourceId());
         other.setSourceName(getSourceName());
-        other.setAggregateSnapshot(getAggregateSnapshot().clone());
+        other.setAggregateStatus(getAggregateStatus().clone());
 
         final List<NodeConnectionStatusSnapshotDTO> nodeStatuses = getNodeStatuses();
         final List<NodeConnectionStatusSnapshotDTO> nodeStatusClones = new ArrayList<>(nodeStatuses.size());

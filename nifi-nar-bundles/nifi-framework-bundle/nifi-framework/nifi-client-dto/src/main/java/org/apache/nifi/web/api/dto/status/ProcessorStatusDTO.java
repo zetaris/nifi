@@ -22,8 +22,10 @@ import java.util.Date;
 import java.util.List;
 
 import javax.xml.bind.annotation.XmlType;
+import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
 import com.wordnik.swagger.annotations.ApiModelProperty;
+import org.apache.nifi.web.api.dto.util.TimeAdapter;
 
 /**
  * DTO for serializing the status of a processor.
@@ -32,9 +34,9 @@ import com.wordnik.swagger.annotations.ApiModelProperty;
 public class ProcessorStatusDTO implements Cloneable {
     private String groupId;
     private String id;
-    private String processorName;
-    private String processorType;
-    private String processorRunStatus;
+    private String name;
+    private String type;
+    private String runStatus;
     private Date statsLastRefreshed;
 
     private ProcessorStatusSnapshotDTO aggregateStatus;
@@ -59,32 +61,33 @@ public class ProcessorStatusDTO implements Cloneable {
     }
 
     @ApiModelProperty("The name of the Processor")
-    public String getProcessorName() {
-        return processorName;
+    public String getName() {
+        return name;
     }
 
-    public void setProcessorName(String processorName) {
-        this.processorName = processorName;
+    public void setName(String name) {
+        this.name = name;
     }
 
     @ApiModelProperty("The type of the Processor")
-    public String getProcessorType() {
-        return processorType;
+    public String getType() {
+        return type;
     }
 
-    public void setProcessorType(String processorType) {
-        this.processorType = processorType;
+    public void setType(String type) {
+        this.type = type;
     }
 
-    @ApiModelProperty("")
-    public String getProcessorRunStatus() {
-        return processorRunStatus;
+    @ApiModelProperty("The run status of the Processor")
+    public String getRunStatus() {
+        return runStatus;
     }
 
-    public void setProcessorRunStatus(String processorRunStatus) {
-        this.processorRunStatus = processorRunStatus;
+    public void setRunStatus(String runStatus) {
+        this.runStatus = runStatus;
     }
 
+    @XmlJavaTypeAdapter(TimeAdapter.class)
     @ApiModelProperty("The timestamp of when the stats were last refreshed")
     public Date getStatsLastRefreshed() {
         return statsLastRefreshed;
@@ -119,17 +122,18 @@ public class ProcessorStatusDTO implements Cloneable {
         final ProcessorStatusDTO other = new ProcessorStatusDTO();
         other.setGroupId(getGroupId());
         other.setId(getId());
-        other.setProcessorName(getProcessorName());
-        other.setProcessorRunStatus(getProcessorRunStatus());
-        other.setProcessorType(getProcessorType());
+        other.setName(getName());
+        other.setRunStatus(getRunStatus());
+        other.setType(getType());
         other.setStatsLastRefreshed(getStatsLastRefreshed());
         other.setAggregateStatus(getAggregateStatus().clone());
 
         final List<NodeProcessorStatusSnapshotDTO> nodeStatuses = getNodeStatuses();
-        final List<NodeProcessorStatusSnapshotDTO> nodeSnapshots = new ArrayList<>(nodeStatuses.size());
+        final List<NodeProcessorStatusSnapshotDTO> nodeStatusClones = new ArrayList<>(nodeStatuses.size());
         for (final NodeProcessorStatusSnapshotDTO status : nodeStatuses) {
-            nodeSnapshots.add(status.clone());
+            nodeStatusClones.add(status.clone());
         }
+        other.setNodeStatuses(nodeStatusClones);
 
         return other;
     }

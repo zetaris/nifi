@@ -719,12 +719,14 @@ public final class DtoFactory {
         dto.setTargetUri(remoteProcessGroupStatus.getTargetUri());
         dto.setName(remoteProcessGroupStatus.getName());
         dto.setTransmissionStatus(remoteProcessGroupStatus.getTransmissionStatus().toString());
+        dto.setStatsLastRefreshed(new Date());
 
         final RemoteProcessGroupStatusSnapshotDTO snapshot = new RemoteProcessGroupStatusSnapshotDTO();
         dto.setAggregateStatus(snapshot);
 
         snapshot.setId(remoteProcessGroupStatus.getId());
         snapshot.setGroupId(remoteProcessGroupStatus.getGroupId());
+        snapshot.setName(remoteProcessGroupStatus.getName());
         snapshot.setTargetUri(remoteProcessGroupStatus.getTargetUri());
         snapshot.setTransmissionStatus(remoteProcessGroupStatus.getTransmissionStatus().toString());
 
@@ -743,6 +745,7 @@ public final class DtoFactory {
         final ProcessGroupStatusDTO processGroupStatusDto = new ProcessGroupStatusDTO();
         processGroupStatusDto.setId(processGroupStatus.getId());
         processGroupStatusDto.setName(processGroupStatus.getName());
+        processGroupStatusDto.setStatsLastRefreshed(new Date());
 
         final ProcessGroupStatusSnapshotDTO snapshot = new ProcessGroupStatusSnapshotDTO();
         processGroupStatusDto.setAggregateStatus(snapshot);
@@ -750,7 +753,6 @@ public final class DtoFactory {
         snapshot.setId(processGroupStatus.getId());
         snapshot.setName(processGroupStatus.getName());
 
-        snapshot.setStatsLastRefreshed(new Date(processGroupStatus.getCreationTimestamp()));
         snapshot.setFlowFilesQueued(processGroupStatus.getQueuedCount());
         snapshot.setBytesQueued(processGroupStatus.getQueuedContentSize());
         snapshot.setBytesRead(processGroupStatus.getBytesRead());
@@ -786,7 +788,7 @@ public final class DtoFactory {
         if (connectionStatusCollection != null) {
             for (final ConnectionStatus connectionStatus : connectionStatusCollection) {
                 final ConnectionStatusDTO connectionStatusDto = createConnectionStatusDto(connectionStatus);
-                connectionStatusDtoCollection.add(connectionStatusDto.getAggregateSnapshot());
+                connectionStatusDtoCollection.add(connectionStatusDto.getAggregateStatus());
             }
         }
 
@@ -846,9 +848,10 @@ public final class DtoFactory {
         connectionStatusDto.setSourceName(connectionStatus.getSourceName());
         connectionStatusDto.setDestinationId(connectionStatus.getDestinationId());
         connectionStatusDto.setDestinationName(connectionStatus.getDestinationName());
+        connectionStatusDto.setStatsLastRefreshed(new Date());
 
         final ConnectionStatusSnapshotDTO snapshot = new ConnectionStatusSnapshotDTO();
-        connectionStatusDto.setAggregateSnapshot(snapshot);
+        connectionStatusDto.setAggregateStatus(snapshot);
 
         snapshot.setId(connectionStatus.getId());
         snapshot.setGroupId(connectionStatus.getGroupId());
@@ -873,7 +876,8 @@ public final class DtoFactory {
         final ProcessorStatusDTO dto = new ProcessorStatusDTO();
         dto.setId(procStatus.getId());
         dto.setGroupId(procStatus.getGroupId());
-        dto.setProcessorName(procStatus.getName());
+        dto.setName(procStatus.getName());
+        dto.setStatsLastRefreshed(new Date());
 
         final ProcessorStatusSnapshotDTO snapshot = new ProcessorStatusSnapshotDTO();
         dto.setAggregateStatus(snapshot);
@@ -892,7 +896,8 @@ public final class DtoFactory {
         snapshot.setBytesWritten(procStatus.getBytesWritten());
 
         snapshot.setTaskCount(procStatus.getInvocations());
-        snapshot.setTaskDuration(procStatus.getProcessingNanos());
+        snapshot.setTasksDurationNanos(procStatus.getProcessingNanos());
+        snapshot.setTasksDuration(FormatUtils.formatHoursMinutesSeconds(procStatus.getProcessingNanos(), TimeUnit.NANOSECONDS));
 
         // determine the run status
         snapshot.setRunStatus(procStatus.getRunStatus().toString());
@@ -917,6 +922,7 @@ public final class DtoFactory {
         dto.setName(portStatus.getName());
         dto.setRunStatus(portStatus.getRunStatus().toString());
         dto.setTransmitting(portStatus.isTransmitting());
+        dto.setStatsLastRefreshed(new Date());
 
         final PortStatusSnapshotDTO snapshot = new PortStatusSnapshotDTO();
         dto.setAggregateStatus(snapshot);

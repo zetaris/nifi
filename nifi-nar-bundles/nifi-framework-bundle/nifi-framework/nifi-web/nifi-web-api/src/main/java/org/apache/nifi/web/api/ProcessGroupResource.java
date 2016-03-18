@@ -16,33 +16,15 @@
  */
 package org.apache.nifi.web.api;
 
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-
-import javax.servlet.http.HttpServletRequest;
-import javax.ws.rs.Consumes;
-import javax.ws.rs.DELETE;
-import javax.ws.rs.DefaultValue;
-import javax.ws.rs.FormParam;
-import javax.ws.rs.GET;
-import javax.ws.rs.HttpMethod;
-import javax.ws.rs.POST;
-import javax.ws.rs.PUT;
-import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
-import javax.ws.rs.Produces;
-import javax.ws.rs.QueryParam;
-import javax.ws.rs.WebApplicationException;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-
+import com.sun.jersey.api.core.ResourceContext;
+import com.wordnik.swagger.annotations.Api;
+import com.wordnik.swagger.annotations.ApiOperation;
+import com.wordnik.swagger.annotations.ApiParam;
+import com.wordnik.swagger.annotations.ApiResponse;
+import com.wordnik.swagger.annotations.ApiResponses;
+import com.wordnik.swagger.annotations.Authorization;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.nifi.cluster.manager.NodeResponse;
 import org.apache.nifi.cluster.manager.exception.UnknownNodeException;
 import org.apache.nifi.cluster.manager.impl.WebClusterManager;
 import org.apache.nifi.cluster.node.Node;
@@ -69,13 +51,30 @@ import org.apache.nifi.web.api.request.DoubleParameter;
 import org.apache.nifi.web.api.request.LongParameter;
 import org.springframework.security.access.prepost.PreAuthorize;
 
-import com.sun.jersey.api.core.ResourceContext;
-import com.wordnik.swagger.annotations.Api;
-import com.wordnik.swagger.annotations.ApiOperation;
-import com.wordnik.swagger.annotations.ApiParam;
-import com.wordnik.swagger.annotations.ApiResponse;
-import com.wordnik.swagger.annotations.ApiResponses;
-import com.wordnik.swagger.annotations.Authorization;
+import javax.servlet.http.HttpServletRequest;
+import javax.ws.rs.Consumes;
+import javax.ws.rs.DELETE;
+import javax.ws.rs.DefaultValue;
+import javax.ws.rs.FormParam;
+import javax.ws.rs.GET;
+import javax.ws.rs.HttpMethod;
+import javax.ws.rs.POST;
+import javax.ws.rs.PUT;
+import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
+import javax.ws.rs.Produces;
+import javax.ws.rs.QueryParam;
+import javax.ws.rs.WebApplicationException;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Response;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * RESTful endpoint for managing a Group.
@@ -1317,7 +1316,15 @@ public class ProcessGroupResource extends ApplicationResource {
         if (properties.isClusterManager()) {
             // determine where this request should be sent
             if (clusterNodeId == null) {
-                return clusterManager.applyRequest(HttpMethod.GET, getAbsolutePath(), getRequestParameters(true), getHeaders()).getResponse();
+                final NodeResponse nodeResponse = clusterManager.applyRequest(HttpMethod.GET, getAbsolutePath(), getRequestParameters(true), getHeaders());
+                final ProcessGroupStatusEntity entity = (ProcessGroupStatusEntity) nodeResponse.getUpdatedEntity();
+
+                // ensure there is an updated entity (result of merging) and prune the response as necessary
+                if (entity != null && !nodewise) {
+                    entity.getProcessGroupStatus().setNodeStatuses(null);
+                }
+
+                return nodeResponse.getResponse();
             } else {
                 // get the target node and ensure it exists
                 final Node targetNode = clusterManager.getNode(clusterNodeId);
@@ -1337,16 +1344,11 @@ public class ProcessGroupResource extends ApplicationResource {
         final ProcessGroupStatusDTO statusReport = serviceFacade.getProcessGroupStatus(groupId);
 
         // prune the response as necessary
-        if (!nodewise) {
-            statusReport.setNodeStatuses(null);
-        }
-
-        // prune the response as necessary
         if (!recursive) {
-            prune(statusReport.getAggregateStatus());
+            pruneChildGroups(statusReport.getAggregateStatus());
             if (statusReport.getNodeStatuses() != null) {
                 for (final NodeProcessGroupStatusSnapshotDTO nodeSnapshot : statusReport.getNodeStatuses()) {
-                    prune(nodeSnapshot.getStatusSnapshot());
+                    pruneChildGroups(nodeSnapshot.getStatusSnapshot());
                 }
             }
         }
@@ -1364,7 +1366,7 @@ public class ProcessGroupResource extends ApplicationResource {
         return clusterContext(generateOkResponse(entity)).build();
     }
 
-    private void prune(final ProcessGroupStatusSnapshotDTO snapshot) {
+    private void pruneChildGroups(final ProcessGroupStatusSnapshotDTO snapshot) {
         for (final ProcessGroupStatusSnapshotDTO childProcessGroupStatus : snapshot.getProcessGroupStatusSnapshots()) {
             childProcessGroupStatus.setConnectionStatusSnapshots(null);
             childProcessGroupStatus.setProcessGroupStatusSnapshots(null);

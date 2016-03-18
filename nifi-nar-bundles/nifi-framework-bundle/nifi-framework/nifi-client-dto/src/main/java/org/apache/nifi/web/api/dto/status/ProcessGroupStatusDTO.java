@@ -17,16 +17,20 @@
 
 package org.apache.nifi.web.api.dto.status;
 
+import java.util.Date;
 import java.util.List;
 
 import javax.xml.bind.annotation.XmlType;
+import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
 import com.wordnik.swagger.annotations.ApiModelProperty;
+import org.apache.nifi.web.api.dto.util.TimeAdapter;
 
 @XmlType(name = "processGroupStatus")
 public class ProcessGroupStatusDTO implements Cloneable {
     private String id;
     private String name;
+    private Date statsLastRefreshed;
 
     private ProcessGroupStatusSnapshotDTO aggregateStatus;
     private List<NodeProcessGroupStatusSnapshotDTO> nodeStatuses;
@@ -66,5 +70,22 @@ public class ProcessGroupStatusDTO implements Cloneable {
 
     public void setNodeStatuses(List<NodeProcessGroupStatusSnapshotDTO> nodeStatuses) {
         this.nodeStatuses = nodeStatuses;
+    }
+
+    /**
+     * When the status for this process group was calculated.
+     *
+     * @return The the status was calculated
+     */
+    @XmlJavaTypeAdapter(TimeAdapter.class)
+    @ApiModelProperty(
+        value = "The time the status for the process group was last refreshed."
+    )
+    public Date getStatsLastRefreshed() {
+        return statsLastRefreshed;
+    }
+
+    public void setStatsLastRefreshed(Date statsLastRefreshed) {
+        this.statsLastRefreshed = statsLastRefreshed;
     }
 }

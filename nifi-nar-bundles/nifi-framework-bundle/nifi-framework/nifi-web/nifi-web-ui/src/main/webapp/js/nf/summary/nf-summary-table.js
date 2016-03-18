@@ -514,7 +514,7 @@ nf.SummaryTable = (function () {
         
         // cluster processor refresh
         nf.Common.addHoverEffect('#cluster-processor-refresh-button', 'button-refresh', 'button-refresh-hover').click(function () {
-            loadClusterProcessorSummary($('#cluster-group-id').text(), $('#cluster-processor-id').text());
+            loadClusterProcessorSummary($('#cluster-processor-group-id').text(), $('#cluster-processor-id').text());
         });
 
         // initialize the cluster processor column model
@@ -672,7 +672,7 @@ nf.SummaryTable = (function () {
                     nf.StatusHistory.showConnectionChart(item.groupId, item.id);
                 } else if (target.hasClass('show-cluster-connection-summary')) {
                     // load the cluster processor summary
-                    loadClusterConnectionSummary(item.id);
+                    loadClusterConnectionSummary(item.groupId, item.id);
 
                     // hide the summary loading indicator
                     $('#summary-loading-container').hide();
@@ -732,7 +732,7 @@ nf.SummaryTable = (function () {
         
         // cluster connection refresh
         nf.Common.addHoverEffect('#cluster-connection-refresh-button', 'button-refresh', 'button-refresh-hover').click(function () {
-            loadClusterConnectionSummary($('#cluster-connection-id').text());
+            loadClusterConnectionSummary($('#cluster-connection-group-id').text(), $('#cluster-connection-id').text());
         });
 
         // initialize the cluster processor column model
@@ -2153,8 +2153,8 @@ nf.SummaryTable = (function () {
             },
             dataType: 'json'
         }).done(function (response) {
-            if (nf.Common.isDefinedAndNotNull(response.clusterProcessorStatus)) {
-                var clusterProcessorStatus = response.clusterProcessorStatus;
+            if (nf.Common.isDefinedAndNotNull(response.processorStatus)) {
+                var processorStatus = response.processorStatus;
 
                 var clusterProcessorsGrid = $('#cluster-processor-summary-table').data('gridInstance');
                 var clusterProcessorsData = clusterProcessorsGrid.getData();
@@ -2162,18 +2162,19 @@ nf.SummaryTable = (function () {
                 var clusterProcessors = [];
 
                 // populate the table
-                $.each(clusterProcessorStatus.nodeProcessorStatus, function (i, nodeProcessorStatus) {
+                $.each(processorStatus.nodeStatuses, function (i, nodeStatus) {
+                    var snapshot = nodeStatus.statusSnapshot;
                     clusterProcessors.push({
-                        id: nodeProcessorStatus.node.nodeId,
-                        node: nodeProcessorStatus.node.address + ':' + nodeProcessorStatus.node.apiPort,
-                        runStatus: nodeProcessorStatus.processorStatus.runStatus,
-                        activeThreadCount: nodeProcessorStatus.processorStatus.activeThreadCount,
-                        input: nodeProcessorStatus.processorStatus.input,
-                        read: nodeProcessorStatus.processorStatus.read,
-                        written: nodeProcessorStatus.processorStatus.written,
-                        output: nodeProcessorStatus.processorStatus.output,
-                        tasks: nodeProcessorStatus.processorStatus.tasks,
-                        tasksDuration: nodeProcessorStatus.processorStatus.tasksDuration
+                        id: nodeStatus.nodeId,
+                        node: nodeStatus.address + ':' + nodeStatus.apiPort,
+                        runStatus: snapshot.runStatus,
+                        activeThreadCount: snapshot.activeThreadCount,
+                        input: snapshot.input,
+                        read: snapshot.read,
+                        written: snapshot.written,
+                        output: snapshot.output,
+                        tasks: snapshot.tasks,
+                        tasksDuration: snapshot.tasksDuration
                     });
                 });
 
@@ -2183,12 +2184,12 @@ nf.SummaryTable = (function () {
                 clusterProcessorsGrid.invalidate();
 
                 // populate the processor details
-                $('#cluster-processor-name').text(clusterProcessorStatus.processorName).ellipsis();
-                $('#cluster-processor-id').text(clusterProcessorStatus.processorId);
-                $('#cluster-processor-group-id').text(clusterProcessorStatus.groupId);
+                $('#cluster-processor-name').text(processorStatus.name).ellipsis();
+                $('#cluster-processor-id').text(processorStatus.id);
+                $('#cluster-processor-group-id').text(processorStatus.groupId);
 
                 // update the stats last refreshed timestamp
-                $('#cluster-processor-summary-last-refreshed').text(clusterProcessorStatus.statsLastRefreshed);
+                $('#cluster-processor-summary-last-refreshed').text(processorStatus.statsLastRefreshed);
             }
         }).fail(nf.Common.handleAjaxError);
     };
@@ -2199,7 +2200,7 @@ nf.SummaryTable = (function () {
      * @argument {string} groupId   The group id
      * @argument {string} connectionId     The connection id
      */
-    var loadClusterConnectionSummary = function (connectionId) {
+    var loadClusterConnectionSummary = function (groupId, connectionId) {
         // get the summary
         $.ajax({
             type: 'GET',
@@ -2209,8 +2210,8 @@ nf.SummaryTable = (function () {
             },
             dataType: 'json'
         }).done(function (response) {
-            if (nf.Common.isDefinedAndNotNull(response.clusterConnectionStatus)) {
-                var clusterConnectionStatus = response.clusterConnectionStatus;
+            if (nf.Common.isDefinedAndNotNull(response.connectionStatus)) {
+                var connectionStatus = response.connectionStatus;
 
                 var clusterConnectionsGrid = $('#cluster-connection-summary-table').data('gridInstance');
                 var clusterConnectionsData = clusterConnectionsGrid.getData();
@@ -2218,15 +2219,16 @@ nf.SummaryTable = (function () {
                 var clusterConnections = [];
 
                 // populate the table
-                $.each(clusterConnectionStatus.nodeConnectionStatus, function (i, nodeConnectionStatus) {
+                $.each(connectionStatus.nodeStatuses, function (i, nodeStatus) {
+                    var snapshot = nodeStatus.statusSnapshot;
                     clusterConnections.push({
-                        id: nodeConnectionStatus.node.nodeId,
-                        node: nodeConnectionStatus.node.address + ':' + nodeConnectionStatus.node.apiPort,
-                        input: nodeConnectionStatus.connectionStatus.input,
-                        queued: nodeConnectionStatus.connectionStatus.queued,
-                        queuedCount: nodeConnectionStatus.connectionStatus.queuedCount,
-                        queuedSize: nodeConnectionStatus.connectionStatus.queuedSize,
-                        output: nodeConnectionStatus.connectionStatus.output
+                        id: nodeStatus.nodeId,
+                        node: nodeStatus.address + ':' + nodeStatus.apiPort,
+                        input: snapshot.input,
+                        queued: snapshot.queued,
+                        queuedCount: snapshot.queuedCount,
+                        queuedSize: snapshot.queuedSize,
+                        output: snapshot.output
                     });
                 });
 
@@ -2236,12 +2238,12 @@ nf.SummaryTable = (function () {
                 clusterConnectionsGrid.invalidate();
 
                 // populate the processor details
-                $('#cluster-connection-name').text(clusterConnectionStatus.connectionName).ellipsis();
-                $('#cluster-connection-id').text(clusterConnectionStatus.connectionId);
-                $('#cluster-connection-group-id').text(clusterConnectionStatus.groupId);
+                $('#cluster-connection-name').text(connectionStatus.name).ellipsis();
+                $('#cluster-connection-id').text(connectionStatus.id);
+                $('#cluster-connection-group-id').text(connectionStatus.groupId);
 
                 // update the stats last refreshed timestamp
-                $('#cluster-connection-summary-last-refreshed').text(clusterConnectionStatus.statsLastRefreshed);
+                $('#cluster-connection-summary-last-refreshed').text(connectionStatus.statsLastRefreshed);
             }
         }).fail(nf.Common.handleAjaxError);
     };
@@ -2257,12 +2259,13 @@ nf.SummaryTable = (function () {
             type: 'GET',
             url: config.urls.processGroups + encodeURIComponent(processGroupId) + '/status',
             data: {
-                nodewise: true
+                nodewise: true,
+                recursive: false
             },
             dataType: 'json'
         }).done(function (response) {
-            if (nf.Common.isDefinedAndNotNull(response.clusterProcessGroupStatus)) {
-                var clusterProcessGroupStatus = response.clusterProcessGroupStatus;
+            if (nf.Common.isDefinedAndNotNull(response.processGroupStatus)) {
+                var processGroupStatus = response.processGroupStatus;
 
                 var clusterProcessGroupsGrid = $('#cluster-process-group-summary-table').data('gridInstance');
                 var clusterProcessGroupsData = clusterProcessGroupsGrid.getData();
@@ -2270,21 +2273,22 @@ nf.SummaryTable = (function () {
                 var clusterProcessGroups = [];
 
                 // populate the table
-                $.each(clusterProcessGroupStatus.nodeProcessGroupStatus, function (i, nodeProcessGroupStatus) {
+                $.each(processGroupStatus.nodeStatuses, function (i, nodeStatus) {
+                    var snapshot = nodeStatus.statusSnapshot;
                     clusterProcessGroups.push({
-                        id: nodeProcessGroupStatus.node.nodeId,
-                        node: nodeProcessGroupStatus.node.address + ':' + nodeProcessGroupStatus.node.apiPort,
-                        activeThreadCount: nodeProcessGroupStatus.processGroupStatus.activeThreadCount,
-                        transferred: nodeProcessGroupStatus.processGroupStatus.transferred,
-                        input: nodeProcessGroupStatus.processGroupStatus.input,
-                        queued: nodeProcessGroupStatus.processGroupStatus.queued,
-                        queuedCount: nodeProcessGroupStatus.processGroupStatus.queuedCount,
-                        queuedSize: nodeProcessGroupStatus.processGroupStatus.queuedSize,
-                        output: nodeProcessGroupStatus.processGroupStatus.output,
-                        read: nodeProcessGroupStatus.processGroupStatus.read,
-                        written: nodeProcessGroupStatus.processGroupStatus.written,
-                        sent: nodeProcessGroupStatus.processGroupStatus.sent,
-                        received: nodeProcessGroupStatus.processGroupStatus.received
+                        id: nodeStatus.nodeId,
+                        node: nodeStatus.address + ':' + nodeStatus.apiPort,
+                        activeThreadCount: snapshot.activeThreadCount,
+                        transferred: snapshot.transferred,
+                        input: snapshot.input,
+                        queued: snapshot.queued,
+                        queuedCount: snapshot.queuedCount,
+                        queuedSize: snapshot.queuedSize,
+                        output: snapshot.output,
+                        read: snapshot.read,
+                        written: snapshot.written,
+                        sent: snapshot.sent,
+                        received: snapshot.received
                     });
                 });
 
@@ -2294,11 +2298,11 @@ nf.SummaryTable = (function () {
                 clusterProcessGroupsGrid.invalidate();
 
                 // populate the input port details
-                $('#cluster-process-group-name').text(clusterProcessGroupStatus.processGroupName).ellipsis();
-                $('#cluster-process-group-id').text(clusterProcessGroupStatus.processGroupId);
+                $('#cluster-process-group-name').text(processGroupStatus.name).ellipsis();
+                $('#cluster-process-group-id').text(processGroupStatus.id);
 
                 // update the stats last refreshed timestamp
-                $('#cluster-process-group-summary-last-refreshed').text(clusterProcessGroupStatus.statsLastRefreshed);
+                $('#cluster-process-group-summary-last-refreshed').text(processGroupStatus.statsLastRefreshed);
             }
         }).fail(nf.Common.handleAjaxError);
     };
@@ -2319,8 +2323,8 @@ nf.SummaryTable = (function () {
             },
             dataType: 'json'
         }).done(function (response) {
-            if (nf.Common.isDefinedAndNotNull(response.clusterPortStatus)) {
-                var clusterInputPortStatus = response.clusterPortStatus;
+            if (nf.Common.isDefinedAndNotNull(response.portStatus)) {
+                var inputPortStatus = response.portStatus;
 
                 var clusterInputPortsGrid = $('#cluster-input-port-summary-table').data('gridInstance');
                 var clusterInputPortsData = clusterInputPortsGrid.getData();
@@ -2328,13 +2332,14 @@ nf.SummaryTable = (function () {
                 var clusterInputPorts = [];
 
                 // populate the table
-                $.each(clusterInputPortStatus.nodePortStatus, function (i, nodeInputPortStatus) {
+                $.each(inputPortStatus.nodeStatuses, function (i, nodeStatus) {
+                    var snapshot = nodeStatus.statusSnapshot;
                     clusterInputPorts.push({
-                        id: nodeInputPortStatus.node.nodeId,
-                        node: nodeInputPortStatus.node.address + ':' + nodeInputPortStatus.node.apiPort,
-                        runStatus: nodeInputPortStatus.portStatus.runStatus,
-                        activeThreadCount: nodeInputPortStatus.portStatus.activeThreadCount,
-                        output: nodeInputPortStatus.portStatus.output
+                        id: nodeStatus.nodeId,
+                        node: nodeStatus.address + ':' + nodeStatus.apiPort,
+                        runStatus: snapshot.runStatus,
+                        activeThreadCount: snapshot.activeThreadCount,
+                        output: snapshot.output
                     });
                 });
 
@@ -2344,12 +2349,12 @@ nf.SummaryTable = (function () {
                 clusterInputPortsGrid.invalidate();
 
                 // populate the input port details
-                $('#cluster-input-port-name').text(clusterInputPortStatus.portName).ellipsis();
-                $('#cluster-input-port-id').text(clusterInputPortStatus.portId);
-                $('#cluster-input-port-group-id').text(clusterInputPortStatus.groupId);
+                $('#cluster-input-port-name').text(inputPortStatus.name).ellipsis();
+                $('#cluster-input-port-id').text(inputPortStatus.id);
+                $('#cluster-input-port-group-id').text(inputPortStatus.groupId);
 
                 // update the stats last refreshed timestamp
-                $('#cluster-input-port-summary-last-refreshed').text(clusterInputPortStatus.statsLastRefreshed);
+                $('#cluster-input-port-summary-last-refreshed').text(inputPortStatus.statsLastRefreshed);
             }
         }).fail(nf.Common.handleAjaxError);
     };
@@ -2370,8 +2375,8 @@ nf.SummaryTable = (function () {
             },
             dataType: 'json'
         }).done(function (response) {
-            if (nf.Common.isDefinedAndNotNull(response.clusterPortStatus)) {
-                var clusterOutputPortStatus = response.clusterPortStatus;
+            if (nf.Common.isDefinedAndNotNull(response.portStatus)) {
+                var outputPortStatus = response.portStatus;
 
                 var clusterOutputPortsGrid = $('#cluster-output-port-summary-table').data('gridInstance');
                 var clusterOutputPortsData = clusterOutputPortsGrid.getData();
@@ -2379,13 +2384,14 @@ nf.SummaryTable = (function () {
                 var clusterOutputPorts = [];
 
                 // populate the table
-                $.each(clusterOutputPortStatus.nodePortStatus, function (i, nodeOutputPortStatus) {
+                $.each(outputPortStatus.nodeStatuses, function (i, nodeStatus) {
+                    var snapshot = nodeStatus.statusSnapshot;
                     clusterOutputPorts.push({
-                        id: nodeOutputPortStatus.node.nodeId,
-                        node: nodeOutputPortStatus.node.address + ':' + nodeOutputPortStatus.node.apiPort,
-                        runStatus: nodeOutputPortStatus.portStatus.runStatus,
-                        activeThreadCount: nodeOutputPortStatus.portStatus.activeThreadCount,
-                        input: nodeOutputPortStatus.portStatus.input
+                        id: nodeStatus.nodeId,
+                        node: nodeStatus.address + ':' + nodeStatus.apiPort,
+                        runStatus: snapshot.runStatus,
+                        activeThreadCount: snapshot.activeThreadCount,
+                        input: snapshot.input
                     });
                 });
 
@@ -2395,12 +2401,12 @@ nf.SummaryTable = (function () {
                 clusterOutputPortsGrid.invalidate();
 
                 // populate the output port details
-                $('#cluster-output-port-name').text(clusterOutputPortStatus.portName).ellipsis();
-                $('#cluster-output-port-id').text(clusterOutputPortStatus.portId);
-                $('#cluster-output-port-group-id').text(clusterOutputPortStatus.groupId);
+                $('#cluster-output-port-name').text(outputPortStatus.name).ellipsis();
+                $('#cluster-output-port-id').text(outputPortStatus.id);
+                $('#cluster-output-port-group-id').text(outputPortStatus.groupId);
 
                 // update the stats last refreshed timestamp
-                $('#cluster-output-port-summary-last-refreshed').text(clusterOutputPortStatus.statsLastRefreshed);
+                $('#cluster-output-port-summary-last-refreshed').text(outputPortStatus.statsLastRefreshed);
             }
         }).fail(nf.Common.handleAjaxError);
     };
@@ -2421,8 +2427,8 @@ nf.SummaryTable = (function () {
             },
             dataType: 'json'
         }).done(function (response) {
-            if (nf.Common.isDefinedAndNotNull(response.clusterRemoteProcessGroupStatus)) {
-                var clusterRemoteProcessGroupStatus = response.clusterRemoteProcessGroupStatus;
+            if (nf.Common.isDefinedAndNotNull(response.remoteProcessGroupStatus)) {
+                var remoteProcessGroupStatus = response.remoteProcessGroupStatus;
 
                 var clusterRemoteProcessGroupsGrid = $('#cluster-remote-process-group-summary-table').data('gridInstance');
                 var clusterRemoteProcessGroupsData = clusterRemoteProcessGroupsGrid.getData();
@@ -2430,16 +2436,17 @@ nf.SummaryTable = (function () {
                 var clusterRemoteProcessGroups = [];
 
                 // populate the table
-                $.each(clusterRemoteProcessGroupStatus.nodeRemoteProcessGroupStatus, function (i, nodeRemoteProcessGroupStatus) {
+                $.each(remoteProcessGroupStatus.nodeStatuses, function (i, nodeStatus) {
+                    var snapshot = nodeStatus.statusSnapshot;
                     clusterRemoteProcessGroups.push({
-                        id: nodeRemoteProcessGroupStatus.node.nodeId,
-                        node: nodeRemoteProcessGroupStatus.node.address + ':' + nodeRemoteProcessGroupStatus.node.apiPort,
-                        targetUri: nodeRemoteProcessGroupStatus.remoteProcessGroupStatus.targetUri,
-                        transmissionStatus: nodeRemoteProcessGroupStatus.remoteProcessGroupStatus.transmissionStatus,
-                        sent: nodeRemoteProcessGroupStatus.remoteProcessGroupStatus.sent,
-                        received: nodeRemoteProcessGroupStatus.remoteProcessGroupStatus.received,
-                        activeThreadCount: nodeRemoteProcessGroupStatus.remoteProcessGroupStatus.activeThreadCount,
-                        authorizationIssues: nodeRemoteProcessGroupStatus.remoteProcessGroupStatus.authorizationIssues
+                        id: nodeStatus.nodeId,
+                        node: nodeStatus.address + ':' + nodeStatus.apiPort,
+                        targetUri: snapshot.targetUri,
+                        transmissionStatus: snapshot.transmissionStatus,
+                        sent: snapshot.sent,
+                        received: snapshot.received,
+                        activeThreadCount: snapshot.activeThreadCount,
+                        authorizationIssues: snapshot.authorizationIssues
                     });
                 });
 
@@ -2449,12 +2456,12 @@ nf.SummaryTable = (function () {
                 clusterRemoteProcessGroupsGrid.invalidate();
 
                 // populate the remote process group details
-                $('#cluster-remote-process-group-name').text(clusterRemoteProcessGroupStatus.remoteProcessGroupName).ellipsis();
-                $('#cluster-remote-process-group-id').text(clusterRemoteProcessGroupStatus.remoteProcessGroupId);
-                $('#cluster-remote-process-group-group-id').text(clusterRemoteProcessGroupStatus.groupId);
+                $('#cluster-remote-process-group-name').text(remoteProcessGroupStatus.name).ellipsis();
+                $('#cluster-remote-process-group-id').text(remoteProcessGroupStatus.id);
+                $('#cluster-remote-process-group-group-id').text(remoteProcessGroupStatus.groupId);
 
                 // update the stats last refreshed timestamp
-                $('#cluster-remote-process-group-summary-last-refreshed').text(clusterRemoteProcessGroupStatus.statsLastRefreshed);
+                $('#cluster-remote-process-group-summary-last-refreshed').text(remoteProcessGroupStatus.statsLastRefreshed);
             }
         }).fail(nf.Common.handleAjaxError);
     };
@@ -2649,7 +2656,7 @@ nf.SummaryTable = (function () {
                     remoteProcessGroupsGrid.invalidate();
 
                     // update the stats last refreshed timestamp
-                    $('#summary-last-refreshed').text(aggregateStatus.statsLastRefreshed);
+                    $('#summary-last-refreshed').text(processGroupStatus.statsLastRefreshed);
 
                     // update the total number of processors
                     if ($('#processor-summary-table').is(':visible')) {

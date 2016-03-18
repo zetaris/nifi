@@ -850,7 +850,7 @@ nf.Canvas = (function () {
                     nf.Graph.setStatus(aggregateStatus);
 
                     // update the timestamp
-                    $('#stats-last-refreshed').text(aggregateStatus.statsLastRefreshed);
+                    $('#stats-last-refreshed').text(processGroupStatus.statsLastRefreshed);
                 }
                 deferred.resolve();
             }).fail(function (xhr, status, error) {

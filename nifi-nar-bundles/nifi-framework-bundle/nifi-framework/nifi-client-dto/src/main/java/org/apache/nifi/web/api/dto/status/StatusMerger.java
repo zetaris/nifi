@@ -237,9 +237,9 @@ public class StatusMerger {
 
     /**
      * Updates the fields that are "pretty printed" based on the raw values currently set. For example,
-     * {@link ProcessGroupStatusDTO#setInput(String)} will be called with the pretty-printed form of the
-     * FlowFile counts and sizes retrieved via {@link ProcessGroupStatusDTO#getFlowFilesIn()} and
-     * {@link ProcessGroupStatusDTO#getBytesIn()}.
+     * {@link ProcessGroupStatusSnapshotDTO#setInput(String)} will be called with the pretty-printed form of the
+     * FlowFile counts and sizes retrieved via {@link ProcessGroupStatusSnapshotDTO#getFlowFilesIn()} and
+     * {@link ProcessGroupStatusSnapshotDTO#getBytesIn()}.
      *
      * This logic is performed here, rather than in the DTO itself because the DTO needs to be kept purely
      * getters & setters - otherwise the automatic marshalling and unmarshalling to/from JSON becomes very
@@ -260,6 +260,47 @@ public class StatusMerger {
         target.setSent(prettyPrint(target.getFlowFilesSent(), target.getBytesSent()));
     }
 
+    public static void merge(final RemoteProcessGroupStatusDTO target, final RemoteProcessGroupStatusDTO toMerge, final String nodeId, final String nodeAddress, final Integer nodeApiPort) {
+        merge(target.getAggregateStatus(), toMerge.getAggregateStatus());
+
+        if (target.getNodeStatuses() != null) {
+            final NodeRemoteProcessGroupStatusSnapshotDTO nodeSnapshot = new NodeRemoteProcessGroupStatusSnapshotDTO();
+            nodeSnapshot.setStatusSnapshot(toMerge.getAggregateStatus());
+            nodeSnapshot.setAddress(nodeAddress);
+            nodeSnapshot.setApiPort(nodeApiPort);
+            nodeSnapshot.setNodeId(nodeId);
+
+            target.getNodeStatuses().add(nodeSnapshot);
+        }
+    }
+
+    public static void merge(final PortStatusDTO target, final PortStatusDTO toMerge, final String nodeId, final String nodeAddress, final Integer nodeApiPort) {
+        merge(target.getAggregateStatus(), toMerge.getAggregateStatus());
+
+        if (target.getNodeStatuses() != null) {
+            final NodePortStatusSnapshotDTO nodeSnapshot = new NodePortStatusSnapshotDTO();
+            nodeSnapshot.setStatusSnapshot(toMerge.getAggregateStatus());
+            nodeSnapshot.setAddress(nodeAddress);
+            nodeSnapshot.setApiPort(nodeApiPort);
+            nodeSnapshot.setNodeId(nodeId);
+
+            target.getNodeStatuses().add(nodeSnapshot);
+        }
+    }
+
+    public static void merge(final ConnectionStatusDTO target, final ConnectionStatusDTO toMerge, final String nodeId, final String nodeAddress, final Integer nodeApiPort) {
+        merge(target.getAggregateStatus(), toMerge.getAggregateStatus());
+
+        if (target.getNodeStatuses() != null) {
+            final NodeConnectionStatusSnapshotDTO nodeSnapshot = new NodeConnectionStatusSnapshotDTO();
+            nodeSnapshot.setStatusSnapshot(toMerge.getAggregateStatus());
+            nodeSnapshot.setAddress(nodeAddress);
+            nodeSnapshot.setApiPort(nodeApiPort);
+            nodeSnapshot.setNodeId(nodeId);
+
+            target.getNodeStatuses().add(nodeSnapshot);
+        }
+    }
 
     public static void merge(final ProcessorStatusDTO target, final ProcessorStatusDTO toMerge, final String nodeId, final String nodeAddress, final Integer nodeApiPort) {
         merge(target.getAggregateStatus(), toMerge.getAggregateStatus());
@@ -296,7 +337,7 @@ public class StatusMerger {
         target.setFlowFilesOut(target.getFlowFilesOut() + toMerge.getFlowFilesOut());
         target.setBytesOut(target.getBytesOut() + toMerge.getBytesOut());
         target.setTaskCount(target.getTaskCount() + toMerge.getTaskCount());
-        target.setTaskDuration(target.getTaskDuration() + toMerge.getTaskDuration());
+        target.setTasksDurationNanos(target.getTasksDurationNanos() + toMerge.getTasksDurationNanos());
         target.setActiveThreadCount(target.getActiveThreadCount() + toMerge.getActiveThreadCount());
         updatePrettyPrintedFields(target);
     }
@@ -311,7 +352,7 @@ public class StatusMerger {
         final String tasks = (taskCount == null) ? "-" : formatCount(taskCount);
         target.setTasks(tasks);
 
-        target.setTasksDuration(FormatUtils.formatHoursMinutesSeconds(target.getTaskDuration(), TimeUnit.NANOSECONDS));
+        target.setTasksDuration(FormatUtils.formatHoursMinutesSeconds(target.getTasksDurationNanos(), TimeUnit.NANOSECONDS));
     }
 
 

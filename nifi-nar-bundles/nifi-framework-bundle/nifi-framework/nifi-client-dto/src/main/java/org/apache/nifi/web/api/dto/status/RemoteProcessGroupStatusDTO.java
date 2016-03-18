@@ -17,11 +17,14 @@
 
 package org.apache.nifi.web.api.dto.status;
 
+import java.util.Date;
 import java.util.List;
 
 import javax.xml.bind.annotation.XmlType;
+import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
 import com.wordnik.swagger.annotations.ApiModelProperty;
+import org.apache.nifi.web.api.dto.util.TimeAdapter;
 
 @XmlType(name = "remoteProcessGroupStatus")
 public class RemoteProcessGroupStatusDTO {
@@ -30,6 +33,7 @@ public class RemoteProcessGroupStatusDTO {
     private String name;
     private String targetUri;
     private String transmissionStatus;
+    private Date statsLastRefreshed;
 
     private List<String> authorizationIssues;
 
@@ -111,4 +115,20 @@ public class RemoteProcessGroupStatusDTO {
         this.nodeStatuses = nodeStatuses;
     }
 
+    /**
+     * When the status for this process group was calculated.
+     *
+     * @return The the status was calculated
+     */
+    @XmlJavaTypeAdapter(TimeAdapter.class)
+    @ApiModelProperty(
+        value = "The time the status for the process group was last refreshed."
+    )
+    public Date getStatsLastRefreshed() {
+        return statsLastRefreshed;
+    }
+
+    public void setStatsLastRefreshed(Date statsLastRefreshed) {
+        this.statsLastRefreshed = statsLastRefreshed;
+    }
 }

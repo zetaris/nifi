@@ -219,18 +219,26 @@ import org.apache.nifi.web.api.dto.provenance.ProvenanceDTO;
 import org.apache.nifi.web.api.dto.provenance.ProvenanceEventDTO;
 import org.apache.nifi.web.api.dto.provenance.ProvenanceRequestDTO;
 import org.apache.nifi.web.api.dto.provenance.ProvenanceResultsDTO;
+import org.apache.nifi.web.api.dto.status.ConnectionStatusDTO;
 import org.apache.nifi.web.api.dto.status.ControllerStatusDTO;
+import org.apache.nifi.web.api.dto.status.NodeConnectionStatusSnapshotDTO;
+import org.apache.nifi.web.api.dto.status.NodePortStatusSnapshotDTO;
+import org.apache.nifi.web.api.dto.status.NodeProcessGroupStatusSnapshotDTO;
 import org.apache.nifi.web.api.dto.status.NodeProcessorStatusSnapshotDTO;
+import org.apache.nifi.web.api.dto.status.NodeRemoteProcessGroupStatusSnapshotDTO;
 import org.apache.nifi.web.api.dto.status.NodeStatusSnapshotsDTO;
+import org.apache.nifi.web.api.dto.status.PortStatusDTO;
 import org.apache.nifi.web.api.dto.status.ProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.ProcessGroupStatusSnapshotDTO;
 import org.apache.nifi.web.api.dto.status.ProcessorStatusDTO;
+import org.apache.nifi.web.api.dto.status.RemoteProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.RemoteProcessGroupStatusSnapshotDTO;
 import org.apache.nifi.web.api.dto.status.StatusHistoryDTO;
 import org.apache.nifi.web.api.dto.status.StatusMerger;
 import org.apache.nifi.web.api.dto.status.StatusSnapshotDTO;
 import org.apache.nifi.web.api.entity.BulletinBoardEntity;
 import org.apache.nifi.web.api.entity.ComponentStateEntity;
+import org.apache.nifi.web.api.entity.ConnectionStatusEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceReferencingComponentsEntity;
 import org.apache.nifi.web.api.entity.ControllerServicesEntity;
@@ -239,6 +247,7 @@ import org.apache.nifi.web.api.entity.CountersEntity;
 import org.apache.nifi.web.api.entity.DropRequestEntity;
 import org.apache.nifi.web.api.entity.FlowSnippetEntity;
 import org.apache.nifi.web.api.entity.ListingRequestEntity;
+import org.apache.nifi.web.api.entity.PortStatusEntity;
 import org.apache.nifi.web.api.entity.ProcessGroupEntity;
 import org.apache.nifi.web.api.entity.ProcessGroupStatusEntity;
 import org.apache.nifi.web.api.entity.ProcessorEntity;
@@ -247,6 +256,7 @@ import org.apache.nifi.web.api.entity.ProcessorsEntity;
 import org.apache.nifi.web.api.entity.ProvenanceEntity;
 import org.apache.nifi.web.api.entity.ProvenanceEventEntity;
 import org.apache.nifi.web.api.entity.RemoteProcessGroupEntity;
+import org.apache.nifi.web.api.entity.RemoteProcessGroupStatusEntity;
 import org.apache.nifi.web.api.entity.RemoteProcessGroupsEntity;
 import org.apache.nifi.web.api.entity.ReportingTaskEntity;
 import org.apache.nifi.web.api.entity.ReportingTasksEntity;
@@ -359,6 +369,10 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
     public static final Pattern CONNECTION_STATUS_HISTORY_URI_PATTERN = Pattern
         .compile("/nifi-api/controller/process-groups/(?:(?:root)|(?:[a-f0-9\\-]{36}))/connections/[a-f0-9\\-]{36}/status/history");
 
+    public static final Pattern CONNECTION_STATUS_URI_PATTERN = Pattern.compile("/nifi-api/controller/process-groups/(?:(?:root)|(?:[a-f0-9\\-]{36}))/connections/[a-f0-9\\-]{36}/status");
+    public static final Pattern INPUT_PORT_STATUS_URI_PATTERN = Pattern.compile("/nifi-api/controller/process-groups/(?:(?:root)|(?:[a-f0-9\\-]{36}))/input-ports/[a-f0-9\\-]{36}/status");
+    public static final Pattern OUTPUT_PORT_STATUS_URI_PATTERN = Pattern.compile("/nifi-api/controller/process-groups/(?:(?:root)|(?:[a-f0-9\\-]{36}))/output-ports/[a-f0-9\\-]{36}/status");
+    public static final Pattern REMOTE_PROCESS_GROUP_STATUS_URI_PATTERN = Pattern.compile("/nifi-api/controller/process-groups/(?:(?:root)|(?:[a-f0-9\\-]{36}))/remote-process-groups/[a-f0-9\\-]{36}/status");
 
     @Deprecated
     public static final Pattern QUEUE_CONTENTS_URI = Pattern.compile("/nifi-api/controller/process-groups/(?:(?:root)|(?:[a-f0-9\\-]{36}))/connections/[a-f0-9\\-]{36}/contents");
@@ -2428,6 +2442,22 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
         return ("GET".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method)) && PROCESS_GROUP_URI_PATTERN.matcher(uri.getPath()).matches();
     }
 
+    private static boolean isConnectionStatusEndpoint(final URI uri, final String method) {
+        return "GET".equalsIgnoreCase(method) && CONNECTION_STATUS_URI_PATTERN.matcher(uri.getPath()).matches();
+    }
+
+    private static boolean isInputPortStatusEndpoint(final URI uri, final String method) {
+        return "GET".equalsIgnoreCase(method) && INPUT_PORT_STATUS_URI_PATTERN.matcher(uri.getPath()).matches();
+    }
+
+    private static boolean isOutputPortStatusEndpoint(final URI uri, final String method) {
+        return "GET".equalsIgnoreCase(method) && OUTPUT_PORT_STATUS_URI_PATTERN.matcher(uri.getPath()).matches();
+    }
+
+    private static boolean isRemoteProcessGroupStatusEndpoint(final URI uri, final String method) {
+        return "GET".equalsIgnoreCase(method) && REMOTE_PROCESS_GROUP_STATUS_URI_PATTERN.matcher(uri.getPath()).matches();
+    }
+
     private static boolean isGroupStatusEndpoint(final URI uri, final String method) {
         return "GET".equalsIgnoreCase(method) && GROUP_STATUS_URI_PATTERN.matcher(uri.getPath()).matches();
     }
@@ -2581,6 +2611,8 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
                 || isReportingTasksEndpoint(uri, method) || isReportingTaskEndpoint(uri, method) || isReportingTaskStateEndpoint(uri, method)
                 || isDropRequestEndpoint(uri, method) || isListFlowFilesEndpoint(uri, method)
                 || isGroupStatusEndpoint(uri, method) || isProcessorStatusEndpoint(uri, method) || isControllerStatusEndpoint(uri, method)
+                || isConnectionStatusEndpoint(uri, method) || isRemoteProcessGroupStatusEndpoint(uri, method)
+                || isInputPortStatusEndpoint(uri, method) || isOutputPortStatusEndpoint(uri, method)
                 || isProcessorStatusHistoryEndpoint(uri, method) || isProcessGroupStatusHistoryEndpoint(uri, method)
                 || isRemoteProcessGroupStatusHistoryEndpoint(uri, method) || isConnectionStatusHistoryEndpoint(uri, method)
                 || isBulletinBoardEndpoint(uri, method) || isSystemDiagnosticsEndpoint(uri, method)
@@ -2655,8 +2687,19 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
         }
     }
 
-    private void mergeGroupStatus(final ProcessGroupStatusDTO statusDto, final Map<NodeIdentifier, ProcessGroupStatusDTO> resultMap) {
+    private void mergeGroupStatus(final ProcessGroupStatusDTO statusDto, final NodeIdentifier selectedNodeId, final Map<NodeIdentifier, ProcessGroupStatusDTO> resultMap) {
         ProcessGroupStatusDTO mergedProcessGroupStatus = statusDto;
+        mergedProcessGroupStatus.setNodeStatuses(new ArrayList<NodeProcessGroupStatusSnapshotDTO>());
+
+        final NodeProcessGroupStatusSnapshotDTO selectedNodeSnapshot = new NodeProcessGroupStatusSnapshotDTO();
+        selectedNodeSnapshot.setStatusSnapshot(statusDto.getAggregateStatus().clone());
+        selectedNodeSnapshot.setAddress(selectedNodeId.getApiAddress());
+        selectedNodeSnapshot.setApiPort(selectedNodeId.getApiPort());
+        selectedNodeSnapshot.setNodeId(selectedNodeId.getId());
+
+
+        mergedProcessGroupStatus.getNodeStatuses().add(selectedNodeSnapshot);
+
         for (final Map.Entry<NodeIdentifier, ProcessGroupStatusDTO> entry : resultMap.entrySet()) {
             final NodeIdentifier nodeId = entry.getKey();
             final ProcessGroupStatusDTO nodeProcessGroupStatus = entry.getValue();
@@ -2685,13 +2728,13 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
         final ProcessorStatusDTO mergedProcessorStatus = statusDto;
         mergedProcessorStatus.setNodeStatuses(new ArrayList<NodeProcessorStatusSnapshotDTO>());
 
-        final NodeProcessorStatusSnapshotDTO nodeSnapshot = new NodeProcessorStatusSnapshotDTO();
-        nodeSnapshot.setStatusSnapshot(statusDto.getAggregateStatus().clone());
-        nodeSnapshot.setAddress(selectedNodeId.getApiAddress());
-        nodeSnapshot.setApiPort(selectedNodeId.getApiPort());
-        nodeSnapshot.setNodeId(selectedNodeId.getId());
+        final NodeProcessorStatusSnapshotDTO selectedNodeSnapshot = new NodeProcessorStatusSnapshotDTO();
+        selectedNodeSnapshot.setStatusSnapshot(statusDto.getAggregateStatus().clone());
+        selectedNodeSnapshot.setAddress(selectedNodeId.getApiAddress());
+        selectedNodeSnapshot.setApiPort(selectedNodeId.getApiPort());
+        selectedNodeSnapshot.setNodeId(selectedNodeId.getId());
 
-        mergedProcessorStatus.getNodeStatuses().add(nodeSnapshot);
+        mergedProcessorStatus.getNodeStatuses().add(selectedNodeSnapshot);
 
         // merge the other nodes
         for (final Map.Entry<NodeIdentifier, ProcessorStatusDTO> entry : resultMap.entrySet()) {
@@ -2705,6 +2748,77 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
         }
     }
 
+    private void mergeConnectionStatus(final ConnectionStatusDTO statusDto, final NodeIdentifier selectedNodeId, final Map<NodeIdentifier, ConnectionStatusDTO> resultMap) {
+        final ConnectionStatusDTO mergedConnectionStatus = statusDto;
+        mergedConnectionStatus.setNodeStatuses(new ArrayList<NodeConnectionStatusSnapshotDTO>());
+
+        final NodeConnectionStatusSnapshotDTO selectedNodeSnapshot = new NodeConnectionStatusSnapshotDTO();
+        selectedNodeSnapshot.setStatusSnapshot(statusDto.getAggregateStatus().clone());
+        selectedNodeSnapshot.setAddress(selectedNodeId.getApiAddress());
+        selectedNodeSnapshot.setApiPort(selectedNodeId.getApiPort());
+        selectedNodeSnapshot.setNodeId(selectedNodeId.getId());
+
+        mergedConnectionStatus.getNodeStatuses().add(selectedNodeSnapshot);
+
+        // merge the other nodes
+        for (final Map.Entry<NodeIdentifier, ConnectionStatusDTO> entry : resultMap.entrySet()) {
+            final NodeIdentifier nodeId = entry.getKey();
+            final ConnectionStatusDTO nodeConnectionStatus = entry.getValue();
+            if (nodeConnectionStatus == statusDto) {
+                continue;
+            }
+
+            StatusMerger.merge(mergedConnectionStatus, nodeConnectionStatus, nodeId.getId(), nodeId.getApiAddress(), nodeId.getApiPort());
+        }
+    }
+
+    private void mergePortStatus(final PortStatusDTO statusDto, final NodeIdentifier selectedNodeId, final Map<NodeIdentifier, PortStatusDTO> resultMap) {
+        final PortStatusDTO mergedPortStatus = statusDto;
+        mergedPortStatus.setNodeStatuses(new ArrayList<NodePortStatusSnapshotDTO>());
+
+        final NodePortStatusSnapshotDTO selectedNodeSnapshot = new NodePortStatusSnapshotDTO();
+        selectedNodeSnapshot.setStatusSnapshot(statusDto.getAggregateStatus().clone());
+        selectedNodeSnapshot.setAddress(selectedNodeId.getApiAddress());
+        selectedNodeSnapshot.setApiPort(selectedNodeId.getApiPort());
+        selectedNodeSnapshot.setNodeId(selectedNodeId.getId());
+
+        mergedPortStatus.getNodeStatuses().add(selectedNodeSnapshot);
+
+        // merge the other nodes
+        for (final Map.Entry<NodeIdentifier, PortStatusDTO> entry : resultMap.entrySet()) {
+            final NodeIdentifier nodeId = entry.getKey();
+            final PortStatusDTO nodePortStatus = entry.getValue();
+            if (nodePortStatus == statusDto) {
+                continue;
+            }
+
+            StatusMerger.merge(mergedPortStatus, nodePortStatus, nodeId.getId(), nodeId.getApiAddress(), nodeId.getApiPort());
+        }
+    }
+
+    private void mergeRemoteProcessGroupStatus(final RemoteProcessGroupStatusDTO statusDto, final NodeIdentifier selectedNodeId, final Map<NodeIdentifier, RemoteProcessGroupStatusDTO> resultMap) {
+        final RemoteProcessGroupStatusDTO mergedRemoteProcessGroupStatus = statusDto;
+        mergedRemoteProcessGroupStatus.setNodeStatuses(new ArrayList<NodeRemoteProcessGroupStatusSnapshotDTO>());
+
+        final NodeRemoteProcessGroupStatusSnapshotDTO selectedNodeSnapshot = new NodeRemoteProcessGroupStatusSnapshotDTO();
+        selectedNodeSnapshot.setStatusSnapshot(statusDto.getAggregateStatus().clone());
+        selectedNodeSnapshot.setAddress(selectedNodeId.getApiAddress());
+        selectedNodeSnapshot.setApiPort(selectedNodeId.getApiPort());
+        selectedNodeSnapshot.setNodeId(selectedNodeId.getId());
+
+        mergedRemoteProcessGroupStatus.getNodeStatuses().add(selectedNodeSnapshot);
+
+        // merge the other nodes
+        for (final Map.Entry<NodeIdentifier, RemoteProcessGroupStatusDTO> entry : resultMap.entrySet()) {
+            final NodeIdentifier nodeId = entry.getKey();
+            final RemoteProcessGroupStatusDTO nodeRemoteProcessGroupStatus = entry.getValue();
+            if (nodeRemoteProcessGroupStatus == statusDto) {
+                continue;
+            }
+
+            StatusMerger.merge(mergedRemoteProcessGroupStatus, nodeRemoteProcessGroupStatus, nodeId.getId(), nodeId.getApiAddress(), nodeId.getApiPort());
+        }
+    }
 
     private void mergeControllerStatus(final ControllerStatusDTO statusDto, final Map<NodeIdentifier, ControllerStatusDTO> resultMap) {
         ControllerStatusDTO mergedStatus = statusDto;
@@ -3386,32 +3500,6 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
 
             // create a new client response
             clientResponse = new NodeResponse(clientResponse, responseEntity);
-        } else if (hasSuccessfulClientResponse && isProcessorStatusEndpoint(uri, method)) {
-            final ProcessorStatusEntity responseEntity = clientResponse.getClientResponse().getEntity(ProcessorStatusEntity.class);
-            final ProcessorStatusDTO statusRequest = responseEntity.getProcessorStatus();
-
-            NodeIdentifier nodeIdentifier = null;
-
-            final Map<NodeIdentifier, ProcessorStatusDTO> resultsMap = new HashMap<>();
-            for (final NodeResponse nodeResponse : updatedNodesMap.values()) {
-                if (problematicNodeResponses.contains(nodeResponse)) {
-                    continue;
-                }
-
-                final ProcessorStatusEntity nodeResponseEntity;
-                if (nodeResponse == clientResponse) {
-                    nodeIdentifier = nodeResponse.getNodeId();
-                    nodeResponseEntity = responseEntity;
-                } else {
-                    nodeResponseEntity = nodeResponse.getClientResponse().getEntity(ProcessorStatusEntity.class);
-                }
-
-                final ProcessorStatusDTO nodeStatus = nodeResponseEntity.getProcessorStatus();
-                resultsMap.put(nodeResponse.getNodeId(), nodeStatus);
-            }
-            mergeProcessorStatus(statusRequest, nodeIdentifier, resultsMap);
-
-            clientResponse = new NodeResponse(clientResponse, responseEntity);
         } else if (hasSuccessfulClientResponse && isProcessGroupEndpoint(uri, method)) {
             final ProcessGroupEntity responseEntity = clientResponse.getClientResponse().getEntity(ProcessGroupEntity.class);
             final ProcessGroupDTO responseDto = responseEntity.getProcessGroup();
@@ -3791,18 +3879,130 @@ public class WebClusterManager implements HttpClusterManager, ProtocolHandler, C
             final ProcessGroupStatusEntity responseEntity = clientResponse.getClientResponse().getEntity(ProcessGroupStatusEntity.class);
             final ProcessGroupStatusDTO statusRequest = responseEntity.getProcessGroupStatus();
 
+            NodeIdentifier nodeIdentifier = null;
+
             final Map<NodeIdentifier, ProcessGroupStatusDTO> resultsMap = new HashMap<>();
             for (final NodeResponse nodeResponse : updatedNodesMap.values()) {
                 if (problematicNodeResponses.contains(nodeResponse)) {
                     continue;
                 }
 
-                final ProcessGroupStatusEntity nodeResponseEntity = nodeResponse == clientResponse ? responseEntity : nodeResponse.getClientResponse().getEntity(ProcessGroupStatusEntity.class);
-                final ProcessGroupStatusDTO nodeStatus = nodeResponseEntity.getProcessGroupStatus();
+                final ProcessGroupStatusEntity nodeResponseEntity;
+                if (nodeResponse == clientResponse) {
+                    nodeIdentifier = nodeResponse.getNodeId();
+                    nodeResponseEntity = responseEntity;
+                } else {
+                    nodeResponseEntity = nodeResponse.getClientResponse().getEntity(ProcessGroupStatusEntity.class);
+                }
 
+                final ProcessGroupStatusDTO nodeStatus = nodeResponseEntity.getProcessGroupStatus();
                 resultsMap.put(nodeResponse.getNodeId(), nodeStatus);
             }
-            mergeGroupStatus(statusRequest, resultsMap);
+            mergeGroupStatus(statusRequest, nodeIdentifier, resultsMap);
+
+            clientResponse = new NodeResponse(clientResponse, responseEntity);
+        } else if (hasSuccessfulClientResponse && isProcessorStatusEndpoint(uri, method)) {
+            final ProcessorStatusEntity responseEntity = clientResponse.getClientResponse().getEntity(ProcessorStatusEntity.class);
+            final ProcessorStatusDTO statusRequest = responseEntity.getProcessorStatus();
+
+            NodeIdentifier nodeIdentifier = null;
+
+            final Map<NodeIdentifier, ProcessorStatusDTO> resultsMap = new HashMap<>();
+            for (final NodeResponse nodeResponse : updatedNodesMap.values()) {
+                if (problematicNodeResponses.contains(nodeResponse)) {
+                    continue;
+                }
+
+                final ProcessorStatusEntity nodeResponseEntity;
+                if (nodeResponse == clientResponse) {
+                    nodeIdentifier = nodeResponse.getNodeId();
+                    nodeResponseEntity = responseEntity;
+                } else {
+                    nodeResponseEntity = nodeResponse.getClientResponse().getEntity(ProcessorStatusEntity.class);
+                }
+
+                final ProcessorStatusDTO nodeStatus = nodeResponseEntity.getProcessorStatus();
+                resultsMap.put(nodeResponse.getNodeId(), nodeStatus);
+            }
+            mergeProcessorStatus(statusRequest, nodeIdentifier, resultsMap);
+
+            clientResponse = new NodeResponse(clientResponse, responseEntity);
+        } else if (hasSuccessfulClientResponse && isConnectionStatusEndpoint(uri, method)) {
+            final ConnectionStatusEntity responseEntity = clientResponse.getClientResponse().getEntity(ConnectionStatusEntity.class);
+            final ConnectionStatusDTO statusRequest = responseEntity.getConnectionStatus();
+
+            NodeIdentifier nodeIdentifier = null;
+
+            final Map<NodeIdentifier, ConnectionStatusDTO> resultsMap = new HashMap<>();
+            for (final NodeResponse nodeResponse : updatedNodesMap.values()) {
+                if (problematicNodeResponses.contains(nodeResponse)) {
+                    continue;
+                }
+
+                final ConnectionStatusEntity nodeResponseEntity;
+                if (nodeResponse == clientResponse) {
+                    nodeIdentifier = nodeResponse.getNodeId();
+                    nodeResponseEntity = responseEntity;
+                } else {
+                    nodeResponseEntity = nodeResponse.getClientResponse().getEntity(ConnectionStatusEntity.class);
+                }
+
+                final ConnectionStatusDTO nodeStatus = nodeResponseEntity.getConnectionStatus();
+                resultsMap.put(nodeResponse.getNodeId(), nodeStatus);
+            }
+            mergeConnectionStatus(statusRequest, nodeIdentifier, resultsMap);
+
+            clientResponse = new NodeResponse(clientResponse, responseEntity);
+        } else if (hasSuccessfulClientResponse && (isInputPortStatusEndpoint(uri, method) || isOutputPortStatusEndpoint(uri, method))) {
+            final PortStatusEntity responseEntity = clientResponse.getClientResponse().getEntity(PortStatusEntity.class);
+            final PortStatusDTO statusRequest = responseEntity.getPortStatus();
+
+            NodeIdentifier nodeIdentifier = null;
+
+            final Map<NodeIdentifier, PortStatusDTO> resultsMap = new HashMap<>();
+            for (final NodeResponse nodeResponse : updatedNodesMap.values()) {
+                if (problematicNodeResponses.contains(nodeResponse)) {
+                    continue;
+                }
+
+                final PortStatusEntity nodeResponseEntity;
+                if (nodeResponse == clientResponse) {
+                    nodeIdentifier = nodeResponse.getNodeId();
+                    nodeResponseEntity = responseEntity;
+                } else {
+                    nodeResponseEntity = nodeResponse.getClientResponse().getEntity(PortStatusEntity.class);
+                }
+
+                final PortStatusDTO nodeStatus = nodeResponseEntity.getPortStatus();
+                resultsMap.put(nodeResponse.getNodeId(), nodeStatus);
+            }
+            mergePortStatus(statusRequest, nodeIdentifier, resultsMap);
+
+            clientResponse = new NodeResponse(clientResponse, responseEntity);
+        } else if (hasSuccessfulClientResponse && isRemoteProcessGroupStatusEndpoint(uri, method)) {
+            final RemoteProcessGroupStatusEntity responseEntity = clientResponse.getClientResponse().getEntity(RemoteProcessGroupStatusEntity.class);
+            final RemoteProcessGroupStatusDTO statusRequest = responseEntity.getRemoteProcessGroupStatus();
+
+            NodeIdentifier nodeIdentifier = null;
+
+            final Map<NodeIdentifier, RemoteProcessGroupStatusDTO> resultsMap = new HashMap<>();
+            for (final NodeResponse nodeResponse : updatedNodesMap.values()) {
+                if (problematicNodeResponses.contains(nodeResponse)) {
+                    continue;
+                }
+
+                final RemoteProcessGroupStatusEntity nodeResponseEntity;
+                if (nodeResponse == clientResponse) {
+                    nodeIdentifier = nodeResponse.getNodeId();
+                    nodeResponseEntity = responseEntity;
+                } else {
+                    nodeResponseEntity = nodeResponse.getClientResponse().getEntity(RemoteProcessGroupStatusEntity.class);
+                }
+
+                final RemoteProcessGroupStatusDTO nodeStatus = nodeResponseEntity.getRemoteProcessGroupStatus();
+                resultsMap.put(nodeResponse.getNodeId(), nodeStatus);
+            }
+            mergeRemoteProcessGroupStatus(statusRequest, nodeIdentifier, resultsMap);
 
             clientResponse = new NodeResponse(clientResponse, responseEntity);
         } else if (hasSuccessfulClientResponse && isControllerStatusEndpoint(uri, method)) {

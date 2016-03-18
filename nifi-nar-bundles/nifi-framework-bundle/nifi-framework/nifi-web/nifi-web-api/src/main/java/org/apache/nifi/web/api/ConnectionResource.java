@@ -25,6 +25,7 @@ import com.wordnik.swagger.annotations.Authorization;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.cluster.context.ClusterContext;
 import org.apache.nifi.cluster.context.ClusterContextThreadLocal;
+import org.apache.nifi.cluster.manager.NodeResponse;
 import org.apache.nifi.cluster.manager.exception.UnknownNodeException;
 import org.apache.nifi.cluster.manager.impl.WebClusterManager;
 import org.apache.nifi.cluster.node.Node;
@@ -340,7 +341,15 @@ public class ConnectionResource extends ApplicationResource {
         if (properties.isClusterManager()) {
             // determine where this request should be sent
             if (clusterNodeId == null) {
-                return clusterManager.applyRequest(HttpMethod.GET, getAbsolutePath(), getRequestParameters(true), getHeaders()).getResponse();
+                final NodeResponse nodeResponse = clusterManager.applyRequest(HttpMethod.GET, getAbsolutePath(), getRequestParameters(true), getHeaders());
+                final ConnectionStatusEntity entity = (ConnectionStatusEntity) nodeResponse.getUpdatedEntity();
+
+                // ensure there is an updated entity (result of merging) and prune the response as necessary
+                if (entity != null && !nodewise) {
+                    entity.getConnectionStatus().setNodeStatuses(null);
+                }
+
+                return nodeResponse.getResponse();
             } else {
                 // get the target node and ensure it exists
                 final Node targetNode = clusterManager.getNode(clusterNodeId);
@@ -358,11 +367,6 @@ public class ConnectionResource extends ApplicationResource {
 
         // get the specified connection status
         final ConnectionStatusDTO connectionStatus = serviceFacade.getConnectionStatus(groupId, id);
-
-        // prune the response as necessary
-        if (!nodewise) {
-            connectionStatus.setNodeStatuses(null);
-        }
 
         // create the revision
         final RevisionDTO revision = new RevisionDTO();

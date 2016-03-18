@@ -23,6 +23,7 @@ import com.wordnik.swagger.annotations.ApiResponse;
 import com.wordnik.swagger.annotations.ApiResponses;
 import com.wordnik.swagger.annotations.Authorization;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.nifi.cluster.manager.NodeResponse;
 import org.apache.nifi.cluster.manager.exception.UnknownNodeException;
 import org.apache.nifi.cluster.manager.impl.WebClusterManager;
 import org.apache.nifi.cluster.node.Node;
@@ -317,7 +318,15 @@ public class RemoteProcessGroupResource extends ApplicationResource {
         if (properties.isClusterManager()) {
             // determine where this request should be sent
             if (clusterNodeId == null) {
-                return clusterManager.applyRequest(HttpMethod.GET, getAbsolutePath(), getRequestParameters(true), getHeaders()).getResponse();
+                final NodeResponse nodeResponse = clusterManager.applyRequest(HttpMethod.GET, getAbsolutePath(), getRequestParameters(true), getHeaders());
+                final RemoteProcessGroupStatusEntity entity = (RemoteProcessGroupStatusEntity) nodeResponse.getUpdatedEntity();
+
+                // ensure there is an updated entity (result of merging) and prune the response as necessary
+                if (entity != null && !nodewise) {
+                    entity.getRemoteProcessGroupStatus().setNodeStatuses(null);
+                }
+
+                return nodeResponse.getResponse();
             } else {
                 // get the target node and ensure it exists
                 final Node targetNode = clusterManager.getNode(clusterNodeId);
@@ -335,11 +344,6 @@ public class RemoteProcessGroupResource extends ApplicationResource {
 
         // get the specified remote process group status
         final RemoteProcessGroupStatusDTO remoteProcessGroupStatus = serviceFacade.getRemoteProcessGroupStatus(groupId, id);
-
-        // prune the response as necessary
-        if (!nodewise) {
-            remoteProcessGroupStatus.setNodeStatuses(null);
-        }
 
         // create the revision
         final RevisionDTO revision = new RevisionDTO();
