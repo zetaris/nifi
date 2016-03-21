@@ -3684,11 +3684,10 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
                     return null;
                 }
 
-                final ProcessGroupStatus procGroupStatus = getGroupStatus(bean.getRootGroup(), getProcessorStats());
                 // create heartbeat payload
                 final HeartbeatPayload hbPayload = new HeartbeatPayload();
                 hbPayload.setSystemStartTime(systemStartTime);
-                hbPayload.setActiveThreadCount(procGroupStatus.getActiveThreadCount());
+                hbPayload.setActiveThreadCount(getActiveThreadCount());
 
                 final QueueSize queueSize = getTotalFlowFileCount(bean.getRootGroup());
                 hbPayload.setTotalFlowFileCount(queueSize.getObjectCount());

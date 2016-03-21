@@ -28,7 +28,6 @@ import javax.xml.bind.Unmarshaller;
 import javax.xml.bind.annotation.XmlRootElement;
 
 import org.apache.nifi.cluster.protocol.ProtocolException;
-import org.apache.nifi.controller.status.ProcessGroupStatus;
 
 /**
  * The payload of the heartbeat. The payload contains status to inform the cluster manager the current workload of this node.
@@ -47,7 +46,6 @@ public class HeartbeatPayload {
         }
     }
 
-    private ProcessGroupStatus processGroupStatus;
     private int activeThreadCount;
     private long totalFlowFileCount;
     private long totalFlowFileBytes;
@@ -75,14 +73,6 @@ public class HeartbeatPayload {
 
     public void setTotalFlowFileBytes(final long totalFlowFileBytes) {
         this.totalFlowFileBytes = totalFlowFileBytes;
-    }
-
-    public ProcessGroupStatus getProcessGroupStatus() {
-        return processGroupStatus;
-    }
-
-    public void setProcessGroupStatus(final ProcessGroupStatus processGroupStatus) {
-        this.processGroupStatus = processGroupStatus;
     }
 
     public long getSystemStartTime() {
