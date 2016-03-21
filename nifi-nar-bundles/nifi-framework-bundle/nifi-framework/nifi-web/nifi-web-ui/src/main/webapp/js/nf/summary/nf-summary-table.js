@@ -1973,9 +1973,6 @@ nf.SummaryTable = (function () {
         return $.ajax({
             type: 'GET',
             url: systemDiagnosticsUri,
-            data: {
-                nodewise: true
-            },
             dataType: 'json'
         }).done(function (response) {
             var systemDiagnostics = response.systemDiagnostics;
