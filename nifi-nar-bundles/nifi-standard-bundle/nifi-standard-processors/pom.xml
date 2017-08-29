@@ -184,11 +184,11 @@ language governing permissions and limitations under the License. -->
             <version>0.6</version>
             <type>jar</type>
         </dependency>
-        <dependency>
-            <groupId>de.svenkubiak</groupId>
-            <artifactId>jBcrypt</artifactId>
-            <version>0.4.1</version>
-        </dependency>
+		<dependency>
+			<groupId>de.svenkubiak</groupId>
+			<artifactId>jBCrypt</artifactId>
+			<version>0.4.1</version>
+		</dependency>
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
