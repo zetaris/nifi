@@ -41,6 +41,8 @@ import org.apache.nifi.serialization.RecordReader;
 import org.apache.nifi.serialization.record.DataType;
 import org.apache.nifi.serialization.record.MapRecord;
 import org.apache.nifi.serialization.record.Record;
+import org.apache.nifi.serialization.record.RecordField;
+import org.apache.nifi.serialization.record.RecordFieldType;
 import org.apache.nifi.serialization.record.RecordSchema;
 import org.apache.nifi.serialization.record.util.DataTypeUtils;
 
@@ -53,10 +55,10 @@ public class CSVRecordReader implements RecordReader {
     private final Supplier<DateFormat> LAZY_TIME_FORMAT;
     private final Supplier<DateFormat> LAZY_TIMESTAMP_FORMAT;
 
-    private List<String> rawFieldNames;
+    private List<RecordField> recordFields;
 
     public CSVRecordReader(final InputStream in, final ComponentLog logger, final RecordSchema schema, final CSVFormat csvFormat, final boolean hasHeader, final boolean ignoreHeader,
-        final String dateFormat, final String timeFormat, final String timestampFormat) throws IOException {
+        final String dateFormat, final String timeFormat, final String timestampFormat, final String encoding) throws IOException {
 
         this.schema = schema;
         final DateFormat df = dateFormat == null ? null : DataTypeUtils.getDateFormat(dateFormat);
@@ -67,7 +69,7 @@ public class CSVRecordReader implements RecordReader {
         LAZY_TIME_FORMAT = () -> tf;
         LAZY_TIMESTAMP_FORMAT = () -> tsf;
 
-        final Reader reader = new InputStreamReader(new BOMInputStream(in));
+        final Reader reader = new InputStreamReader(new BOMInputStream(in), encoding);
 
         CSVFormat withHeader;
         if (hasHeader) {
@@ -75,6 +77,8 @@ public class CSVRecordReader implements RecordReader {
 
             if (ignoreHeader) {
                 withHeader = withHeader.withHeader(schema.getFieldNames().toArray(new String[0]));
+            } else {
+                withHeader = withHeader.withFirstRecordAsHeader();
             }
         } else {
             withHeader = csvFormat.withHeader(schema.getFieldNames().toArray(new String[0]));
@@ -87,31 +91,37 @@ public class CSVRecordReader implements RecordReader {
     public Record nextRecord(final boolean coerceTypes, final boolean dropUnknownFields) throws IOException, MalformedRecordException {
         final RecordSchema schema = getSchema();
 
-        final List<String> rawFieldNames = getRawFieldNames();
-        final int numFieldNames = rawFieldNames.size();
+        final List<RecordField> recordFields = getRecordFields();
+        final int numFieldNames = recordFields.size();
 
         for (final CSVRecord csvRecord : csvParser) {
-            final Map<String, Object> values = new LinkedHashMap<>();
+            final Map<String, Object> values = new LinkedHashMap<>(recordFields.size() * 2);
             for (int i = 0; i < csvRecord.size(); i++) {
-                final String rawFieldName = numFieldNames <= i ? "unknown_field_index_" + i : rawFieldNames.get(i);
                 final String rawValue = csvRecord.get(i);
 
-                final Optional<DataType> dataTypeOption = schema.getDataType(rawFieldName);
+                final String rawFieldName;
+                final DataType dataType;
+                if (i >= numFieldNames) {
+                    if (!dropUnknownFields) {
+                        values.put("unknown_field_index_" + i, rawValue);
+                    }
 
-                if (!dataTypeOption.isPresent() && dropUnknownFields) {
                     continue;
+                } else {
+                    final RecordField recordField = recordFields.get(i);
+                    rawFieldName = recordField.getFieldName();
+                    dataType = recordField.getDataType();
                 }
 
+
                 final Object value;
-                if (coerceTypes && dataTypeOption.isPresent()) {
-                    value = convert(rawValue, dataTypeOption.get(), rawFieldName);
-                } else if (dataTypeOption.isPresent()) {
+                if (coerceTypes) {
+                    value = convert(rawValue, dataType, rawFieldName);
+                } else {
                     // The CSV Reader is going to return all fields as Strings, because CSV doesn't have any way to
                     // dictate a field type. As a result, we will use the schema that we have to attempt to convert
                     // the value into the desired type if it's a simple type.
-                    value = convertSimpleIfPossible(rawValue, dataTypeOption.get(), rawFieldName);
-                } else {
-                    value = rawValue;
+                    value = convertSimpleIfPossible(rawValue, dataType, rawFieldName);
                 }
 
                 values.put(rawFieldName, value);
@@ -124,9 +134,9 @@ public class CSVRecordReader implements RecordReader {
     }
 
 
-    private List<String> getRawFieldNames() {
-        if (this.rawFieldNames != null) {
-            return this.rawFieldNames;
+    private List<RecordField> getRecordFields() {
+        if (this.recordFields != null) {
+            return this.recordFields;
         }
 
         // Use a SortedMap keyed by index of the field so that we can get a List of field names in the correct order
@@ -135,8 +145,19 @@ public class CSVRecordReader implements RecordReader {
             sortedMap.put(entry.getValue(), entry.getKey());
         }
 
-        this.rawFieldNames = new ArrayList<>(sortedMap.values());
-        return this.rawFieldNames;
+        final List<RecordField> fields = new ArrayList<>();
+        final List<String> rawFieldNames = new ArrayList<>(sortedMap.values());
+        for (final String rawFieldName : rawFieldNames) {
+            final Optional<RecordField> option = schema.getField(rawFieldName);
+            if (option.isPresent()) {
+                fields.add(option.get());
+            } else {
+                fields.add(new RecordField(rawFieldName, RecordFieldType.STRING.getDataType()));
+            }
+        }
+
+        this.recordFields = fields;
+        return fields;
     }
 
 

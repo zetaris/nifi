@@ -16,33 +16,6 @@
  */
 package org.apache.nifi.controller.repository;
 
-import java.io.BufferedOutputStream;
-import java.io.ByteArrayInputStream;
-import java.io.Closeable;
-import java.io.EOFException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.NoSuchElementException;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-
 import org.apache.commons.io.IOUtils;
 import org.apache.nifi.connectable.Connectable;
 import org.apache.nifi.connectable.Connection;
@@ -81,6 +54,33 @@ import org.apache.nifi.stream.io.ByteCountingOutputStream;
 import org.apache.nifi.stream.io.StreamUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.Closeable;
+import java.io.EOFException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * <p>
@@ -1168,8 +1168,10 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
         migrate((StandardProcessSession) newOwner, flowFiles);
     }
 
-    private void migrate(final StandardProcessSession newOwner, final Collection<FlowFile> flowFiles) {
+    private void migrate(final StandardProcessSession newOwner, Collection<FlowFile> flowFiles) {
         // We don't call validateRecordState() here because we want to allow migration of FlowFiles that have already been marked as removed or transferred, etc.
+        flowFiles = flowFiles.stream().map(this::getMostRecent).collect(Collectors.toList());
+
         for (final FlowFile flowFile : flowFiles) {
             if (openInputStreams.containsKey(flowFile)) {
                 throw new IllegalStateException(flowFile + " cannot be migrated to a new Process Session because this session currently "
@@ -1531,9 +1533,7 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
             return Collections.emptyList();
         }
 
-        final Connection connection = connections.get(context.getNextIncomingConnectionIndex() % connections.size());
-
-        return get(connection, new ConnectionPoller() {
+        return get(new ConnectionPoller() {
             @Override
             public List<FlowFileRecord> poll(final Connection connection, final Set<FlowFileRecord> expiredRecords) {
                 return connection.poll(new FlowFileFilter() {
@@ -1580,7 +1580,7 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
                 registerDequeuedRecord(flowFile, connection);
             }
 
-            return new ArrayList<FlowFile>(newlySelected);
+            return new ArrayList<>(newlySelected);
         } finally {
             if (lockQueue) {
                 connection.unlock();
@@ -1615,7 +1615,7 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
                     registerDequeuedRecord(flowFile, conn);
                 }
 
-                return new ArrayList<FlowFile>(newlySelected);
+                return new ArrayList<>(newlySelected);
             }
 
             return new ArrayList<>();
@@ -1658,7 +1658,8 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
     }
 
     @Override
-    public FlowFile clone(final FlowFile example) {
+    public FlowFile clone(FlowFile example) {
+        example = validateRecordState(example);
         return clone(example, 0L, example.getSize());
     }
 
@@ -3098,8 +3099,15 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
         return records.containsKey(flowFile);
     }
 
+    private FlowFile getMostRecent(final FlowFile flowFile) {
+        final StandardRepositoryRecord existingRecord = records.get(flowFile);
+        return existingRecord == null ? flowFile : existingRecord.getCurrent();
+    }
+
     @Override
-    public FlowFile create(final FlowFile parent) {
+    public FlowFile create(FlowFile parent) {
+        parent = getMostRecent(parent);
+
         final Map<String, String> newAttributes = new HashMap<>(3);
         newAttributes.put(CoreAttributes.FILENAME.key(), String.valueOf(System.nanoTime()));
         newAttributes.put(CoreAttributes.PATH.key(), DEFAULT_FLOWFILE_PATH);
@@ -3135,7 +3143,9 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
     }
 
     @Override
-    public FlowFile create(final Collection<FlowFile> parents) {
+    public FlowFile create(Collection<FlowFile> parents) {
+        parents = parents.stream().map(this::getMostRecent).collect(Collectors.toList());
+
         final Map<String, String> newAttributes = intersectAttributes(parents);
         newAttributes.remove(CoreAttributes.UUID.key());
         newAttributes.remove(CoreAttributes.ALTERNATE_IDENTIFIER.key());

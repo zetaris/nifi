@@ -77,19 +77,21 @@ public final class StandardProcessScheduler implements ProcessScheduler {
     private final ConcurrentMap<Object, ScheduleState> scheduleStates = new ConcurrentHashMap<>();
     private final ScheduledExecutorService frameworkTaskExecutor;
     private final ConcurrentMap<SchedulingStrategy, SchedulingAgent> strategyAgentMap = new ConcurrentHashMap<>();
-    // thread pool for starting/stopping components
 
-    private final ScheduledExecutorService componentLifeCycleThreadPool = new FlowEngine(8, "StandardProcessScheduler", true);
-    private final ScheduledExecutorService componentMonitoringThreadPool = new FlowEngine(8, "StandardProcessScheduler", true);
+    // thread pool for starting/stopping components
+    private final ScheduledExecutorService componentLifeCycleThreadPool;
+    private final ScheduledExecutorService componentMonitoringThreadPool = new FlowEngine(2, "Monitor Processore Lifecycle", true);
 
     private final StringEncryptor encryptor;
 
     public StandardProcessScheduler(
+        final FlowEngine componentLifecycleThreadPool,
             final ControllerServiceProvider controllerServiceProvider,
             final StringEncryptor encryptor,
             final StateManagerProvider stateManagerProvider,
             final NiFiProperties nifiProperties
     ) {
+        this.componentLifeCycleThreadPool = componentLifecycleThreadPool;
         this.controllerServiceProvider = controllerServiceProvider;
         this.encryptor = encryptor;
         this.stateManagerProvider = stateManagerProvider;
@@ -164,7 +166,6 @@ public final class StandardProcessScheduler implements ProcessScheduler {
 
         frameworkTaskExecutor.shutdown();
         componentLifeCycleThreadPool.shutdown();
-        componentMonitoringThreadPool.shutdown();
     }
 
     @Override
@@ -294,16 +295,16 @@ public final class StandardProcessScheduler implements ProcessScheduler {
      * {@link ProcessorNode#start(ScheduledExecutorService, long, org.apache.nifi.processor.ProcessContext, Runnable)}
      * method.
      *
-     * @see StandardProcessorNode#start(ScheduledExecutorService, long, org.apache.nifi.processor.ProcessContext, Runnable).
+     * @see StandardProcessorNode#start(ScheduledExecutorService, long, org.apache.nifi.processor.ProcessContext, Runnable)
      */
     @Override
-    public synchronized CompletableFuture<Void> startProcessor(final ProcessorNode procNode) {
-        StandardProcessContext processContext = new StandardProcessContext(procNode, this.controllerServiceProvider,
+    public synchronized CompletableFuture<Void> startProcessor(final ProcessorNode procNode, final boolean failIfStopping) {
+        final StandardProcessContext processContext = new StandardProcessContext(procNode, this.controllerServiceProvider,
             this.encryptor, getStateManager(procNode.getIdentifier()));
         final ScheduleState scheduleState = getScheduleState(requireNonNull(procNode));
 
         final CompletableFuture<Void> future = new CompletableFuture<>();
-        SchedulingAgentCallback callback = new SchedulingAgentCallback() {
+        final SchedulingAgentCallback callback = new SchedulingAgentCallback() {
             @Override
             public void trigger() {
                 getSchedulingAgent(procNode).schedule(procNode, scheduleState);
@@ -311,19 +312,19 @@ public final class StandardProcessScheduler implements ProcessScheduler {
             }
 
             @Override
-            public Future<?> invokeMonitoringTask(Callable<?> task) {
+            public Future<?> scheduleTask(Callable<?> task) {
                 scheduleState.incrementActiveThreadCount();
-                return componentMonitoringThreadPool.submit(task);
+                return componentLifeCycleThreadPool.submit(task);
             }
 
             @Override
-            public void postMonitor() {
+            public void onTaskComplete() {
                 scheduleState.decrementActiveThreadCount();
             }
         };
 
         LOG.info("Starting {}", procNode);
-        procNode.start(this.componentLifeCycleThreadPool, this.administrativeYieldMillis, processContext, callback);
+        procNode.start(this.componentMonitoringThreadPool, this.administrativeYieldMillis, processContext, callback, failIfStopping);
         return future;
     }
 
@@ -341,7 +342,7 @@ public final class StandardProcessScheduler implements ProcessScheduler {
         final ScheduleState state = getScheduleState(procNode);
 
         LOG.info("Stopping {}", procNode);
-        return procNode.stop(this.componentLifeCycleThreadPool, processContext, getSchedulingAgent(procNode), state);
+        return procNode.stop(this, this.componentLifeCycleThreadPool, processContext, getSchedulingAgent(procNode), state);
     }
 
     @Override

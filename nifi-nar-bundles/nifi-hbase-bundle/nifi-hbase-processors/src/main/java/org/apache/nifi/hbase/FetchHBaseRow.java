@@ -268,7 +268,7 @@ public class FetchHBaseRow extends AbstractProcessor {
 
         FlowFile handlerFlowFile = handler.getFlowFile();
         if (!handler.handledRow()) {
-            getLogger().error("Row {} not found in {}, transferring to not found", new Object[] {rowId, tableName});
+            getLogger().debug("Row {} not found in {}, transferring to not found", new Object[] {rowId, tableName});
             session.transfer(handlerFlowFile, REL_NOT_FOUND);
             return;
         }
@@ -285,10 +285,10 @@ public class FetchHBaseRow extends AbstractProcessor {
 
         handlerFlowFile = session.putAllAttributes(handlerFlowFile, attributes);
 
-        final String transitUri = "hbase://" + tableName + "/" + rowId;
-        if (destination.equals(DESTINATION_CONTENT.getValue())) {
-            session.getProvenanceReporter().fetch(handlerFlowFile, transitUri);
-        } else {
+        final String transitUri = hBaseClientService.toTransitUri(tableName, rowId);
+        // Regardless to where the result is written to, emit a fetch event.
+        session.getProvenanceReporter().fetch(handlerFlowFile, transitUri);
+        if (!destination.equals(DESTINATION_CONTENT.getValue())) {
             session.getProvenanceReporter().modifyAttributes(handlerFlowFile, "Added attributes to FlowFile from " + transitUri);
         }
 

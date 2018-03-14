@@ -100,16 +100,16 @@ public class TestStandardProcessorNode {
         final LoggableComponent<Processor> loggableComponent = new LoggableComponent<>(processor, coordinate, null);
         final StandardProcessorNode procNode = new StandardProcessorNode(loggableComponent, uuid, createValidationContextFactory(), null, null,
             NiFiProperties.createBasicNiFiProperties(null, null), new StandardComponentVariableRegistry(VariableRegistry.EMPTY_REGISTRY), reloadComponent);
-        final ScheduledExecutorService taskScheduler = new FlowEngine(2, "TestClasspathResources", true);
+        final ScheduledExecutorService taskScheduler = new FlowEngine(1, "TestClasspathResources", true);
 
         final StandardProcessContext processContext = new StandardProcessContext(procNode, null, null, null);
         final SchedulingAgentCallback schedulingAgentCallback = new SchedulingAgentCallback() {
             @Override
-            public void postMonitor() {
+            public void onTaskComplete() {
             }
 
             @Override
-            public Future<?> invokeMonitoringTask(final Callable<?> task) {
+            public Future<?> scheduleTask(final Callable<?> task) {
                 return taskScheduler.submit(task);
             }
 
@@ -119,7 +119,7 @@ public class TestStandardProcessorNode {
             }
         };
 
-        procNode.start(taskScheduler, 20000L, processContext, schedulingAgentCallback);
+        procNode.start(taskScheduler, 20000L, processContext, schedulingAgentCallback, true);
 
         Thread.sleep(1000L);
         assertEquals(1, processor.onScheduledCount);

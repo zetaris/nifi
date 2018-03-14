@@ -61,6 +61,8 @@
             } else {
                 checkbox.removeClass('checkbox-checked').addClass('checkbox-unchecked');
             }
+            // emit a state change event
+            checkbox.trigger('change');
         });
 
         // setup click areas for custom checkboxes
@@ -117,7 +119,7 @@
     }, {
         text: 'access restricted components',
         value: 'restricted-components',
-        description: 'Allows users to create/modify restricted components assuming otherwise sufficient permissions'
+        description: 'Allows users to create/modify restricted components assuming other permissions are sufficient'
     }, {
         text: 'access all policies',
         value: 'policies',
@@ -313,7 +315,7 @@
             var markup = '';
 
             // restriction
-            if (nfCommon.isBlank(dataContext.usageRestriction) === false) {
+            if (dataContext.restricted === true) {
                 markup += '<div class="view-usage-restriction fa fa-shield"></div><span class="hidden row-id">' + nfCommon.escapeHtml(dataContext.id) + '</span>';
             } else {
                 markup += '<div class="fa"></div>';
@@ -415,6 +417,15 @@
             }
 
             return nfCommon.typeBundleFormatter(row, cell, value, columnDef, dataContext.component);
+        },
+
+        /**
+         * Gets the version control tooltip.
+         *
+         * @param versionControlInformation
+         */
+        getVersionControlTooltip: function (versionControlInformation) {
+            return versionControlInformation.stateExplanation;
         },
 
         /**
@@ -555,6 +566,17 @@
         },
 
         /**
+         * Determines whether the current user can version flows.
+         */
+        canVersionFlows: function () {
+            if (nfCommon.isDefinedAndNotNull(nfCommon.currentUser)) {
+                return nfCommon.currentUser.canVersionFlows === true;
+            } else {
+                return false;
+            }
+        },
+
+        /**
          * Determines whether the current user can access provenance.
          *
          * @returns {boolean}
@@ -568,13 +590,63 @@
         },
 
         /**
-         * Determines whether the current user can access restricted comopnents.
+         * Determines whether the current user can access restricted components.
          *
          * @returns {boolean}
          */
         canAccessRestrictedComponents: function () {
             if (nfCommon.isDefinedAndNotNull(nfCommon.currentUser)) {
                 return nfCommon.currentUser.restrictedComponentsPermissions.canWrite === true;
+            } else {
+                return false;
+            }
+        },
+
+        /**
+         * Determines whether the current user can access the specific explicit component restrictions.
+         *
+         * @param {object} explicitRestrictions
+         * @returns {boolean}
+         */
+        canAccessComponentRestrictions: function (explicitRestrictions) {
+            if (nfCommon.isDefinedAndNotNull(nfCommon.currentUser)) {
+                if (nfCommon.currentUser.restrictedComponentsPermissions.canWrite === true) {
+                    return true;
+                }
+
+                var satisfiesRequiredPermission = function (requiredPermission) {
+                    if (nfCommon.isEmpty(nfCommon.currentUser.componentRestrictionPermissions)) {
+                        return false;
+                    }
+
+                    var hasPermission = false;
+
+                    $.each(nfCommon.currentUser.componentRestrictionPermissions, function (_, componentRestrictionPermission) {
+                        if (componentRestrictionPermission.requiredPermission.id === requiredPermission.id) {
+                            if (componentRestrictionPermission.permissions.canWrite === true) {
+                                hasPermission = true;
+                                return false;
+                            }
+                        }
+                    });
+
+                    return hasPermission;
+                };
+
+                var satisfiesRequiredPermissions = true;
+
+                if (nfCommon.isEmpty(explicitRestrictions)) {
+                    satisfiesRequiredPermissions = false;
+                } else {
+                    $.each(explicitRestrictions, function (_, explicitRestriction) {
+                        if (!satisfiesRequiredPermission(explicitRestriction.requiredPermission)) {
+                            satisfiesRequiredPermissions = false;
+                            return false;
+                        }
+                    });
+                }
+
+                return satisfiesRequiredPermissions;
             } else {
                 return false;
             }
@@ -1000,7 +1072,7 @@
         },
 
         /**
-         * Extracts the contents of the specified str after the strToFind. If the
+         * Extracts the contents of the specified str after the last strToFind. If the
          * strToFind is not found or the last part of the str, an empty string is
          * returned.
          *
@@ -1040,8 +1112,25 @@
         },
 
         /**
-         * Extracts the contents of the specified str before the strToFind. If the
+         * Extracts the contents of the specified str before the last strToFind. If the
          * strToFind is not found or the first part of the str, an empty string is
+         * returned.
+         *
+         * @argument {string} str       The full string
+         * @argument {string} strToFind The substring to find
+         */
+        substringBeforeLast: function (str, strToFind) {
+            var result = '';
+            var indexOfStrToFind = str.lastIndexOf(strToFind);
+            if (indexOfStrToFind >= 0) {
+                result = str.substr(0, indexOfStrToFind);
+            }
+            return result;
+        },
+
+        /**
+         * Extracts the contents of the specified str before the strToFind. If the
+         * strToFind is not found or the first path of the str, an empty string is
          * returned.
          *
          * @argument {string} str       The full string

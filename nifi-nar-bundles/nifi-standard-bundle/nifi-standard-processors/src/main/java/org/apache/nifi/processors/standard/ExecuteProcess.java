@@ -21,6 +21,7 @@ import org.apache.nifi.annotation.behavior.DynamicProperty;
 import org.apache.nifi.annotation.behavior.InputRequirement;
 import org.apache.nifi.annotation.behavior.InputRequirement.Requirement;
 import org.apache.nifi.annotation.behavior.Restricted;
+import org.apache.nifi.annotation.behavior.Restriction;
 import org.apache.nifi.annotation.behavior.WritesAttribute;
 import org.apache.nifi.annotation.behavior.WritesAttributes;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
@@ -28,6 +29,7 @@ import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.annotation.lifecycle.OnScheduled;
 import org.apache.nifi.annotation.lifecycle.OnUnscheduled;
 import org.apache.nifi.components.PropertyDescriptor;
+import org.apache.nifi.components.RequiredPermission;
 import org.apache.nifi.components.Validator;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.logging.ComponentLog;
@@ -71,7 +73,13 @@ import java.util.concurrent.locks.ReentrantLock;
         + "to be long-running, the Processor can output the partial data on a specified interval. When this option is used, the output is expected to be in textual "
         + "format, as it typically does not make sense to split binary data on arbitrary time-based intervals.")
 @DynamicProperty(name = "An environment variable name", value = "An environment variable value", description = "These environment variables are passed to the process spawned by this Processor")
-@Restricted("Provides operator the ability to execute arbitrary code assuming all permissions that NiFi has.")
+@Restricted(
+        restrictions = {
+                @Restriction(
+                        requiredPermission = RequiredPermission.EXECUTE_CODE,
+                        explanation = "Provides operator the ability to execute arbitrary code assuming all permissions that NiFi has.")
+        }
+)
 @WritesAttributes({
     @WritesAttribute(attribute = "command", description = "Executed command"),
     @WritesAttribute(attribute = "command.arguments", description = "Arguments of the command")
@@ -85,7 +93,7 @@ public class ExecuteProcess extends AbstractProcessor {
     .name("Command")
     .description("Specifies the command to be executed; if just the name of an executable is provided, it must be in the user's environment PATH.")
     .required(true)
-    .expressionLanguageSupported(false)
+    .expressionLanguageSupported(true)
     .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
     .build();
 
@@ -100,7 +108,7 @@ public class ExecuteProcess extends AbstractProcessor {
     public static final PropertyDescriptor WORKING_DIR = new PropertyDescriptor.Builder()
     .name("Working Directory")
     .description("The directory to use as the current working directory when executing the command")
-    .expressionLanguageSupported(false)
+    .expressionLanguageSupported(true)
     .addValidator(StandardValidators.createDirectoryExistsValidator(false, true))
     .required(false)
     .build();
@@ -162,6 +170,7 @@ public class ExecuteProcess extends AbstractProcessor {
         properties.add(COMMAND_ARGUMENTS);
         properties.add(BATCH_DURATION);
         properties.add(REDIRECT_ERROR_STREAM);
+        properties.add(WORKING_DIR);
         properties.add(ARG_DELIMITER);
         return properties;
     }
@@ -212,7 +221,7 @@ public class ExecuteProcess extends AbstractProcessor {
 
         final Long batchNanos = context.getProperty(BATCH_DURATION).asTimePeriod(TimeUnit.NANOSECONDS);
 
-        final String command = context.getProperty(COMMAND).getValue();
+        final String command = context.getProperty(COMMAND).evaluateAttributeExpressions().getValue();
         final String arguments = context.getProperty(COMMAND_ARGUMENTS).isSet()
           ? context.getProperty(COMMAND_ARGUMENTS).evaluateAttributeExpressions().getValue()
           : null;
@@ -310,7 +319,7 @@ public class ExecuteProcess extends AbstractProcessor {
         final Boolean redirectErrorStream = context.getProperty(REDIRECT_ERROR_STREAM).asBoolean();
 
         final ProcessBuilder builder = new ProcessBuilder(commandStrings);
-        final String workingDirName = context.getProperty(WORKING_DIR).getValue();
+        final String workingDirName = context.getProperty(WORKING_DIR).evaluateAttributeExpressions().getValue();
         if (workingDirName != null) {
             builder.directory(new File(workingDirName));
         }

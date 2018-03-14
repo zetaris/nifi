@@ -29,6 +29,7 @@ import org.apache.nifi.processor.util.StandardValidators;
 
 import java.io.IOException;
 import java.util.Collection;
+import java.util.List;
 
 @Tags({"hbase", "client"})
 @CapabilityDescription("A controller service for accessing an HBase client.")
@@ -117,6 +118,15 @@ public interface HBaseClientService extends ControllerService {
     void delete(String tableName, byte[] rowId) throws IOException;
 
     /**
+     * Deletes a list of rows in HBase. All cells are deleted.
+     *
+     * @param tableName the name of an HBase table
+     * @param rowIds a list of rowIds to send in a batch delete
+     */
+
+    void delete(String tableName, List<byte[]> rowIds) throws IOException;
+
+    /**
      * Scans the given table using the optional filter criteria and passing each result to the provided handler.
      *
      * @param tableName the name of an HBase table to scan
@@ -139,6 +149,23 @@ public interface HBaseClientService extends ControllerService {
      * @throws IOException thrown when there are communication errors with HBase
      */
     void scan(String tableName, byte[] startRow, byte[] endRow, Collection<Column> columns, ResultHandler handler) throws IOException;
+
+    /**
+     * Scans the given table for the given range of row keys or time rage and passes the result to a handler.<br/>
+     *
+     * @param tableName the name of an HBase table to scan
+     * @param startRow the row identifier to start scanning at
+     * @param endRow the row identifier to end scanning at
+     * @param filterExpression  optional filter expression, if not specified no filtering is performed
+     * @param timerangeMin the minimum timestamp of cells to return, passed to the HBase scanner timeRange
+     * @param timerangeMax the maximum timestamp of cells to return, passed to the HBase scanner timeRange
+     * @param limitRows the maximum number of rows to be returned by scanner
+     * @param isReversed whether this scan is a reversed one.
+     * @param columns optional columns to return, if not specified all columns are returned
+     * @param handler a handler to process rows of the result
+     */
+    void scan(String tableName, String startRow, String endRow, String filterExpression, Long timerangeMin, Long timerangeMax, Integer limitRows,
+            Boolean isReversed, Collection<Column> columns, ResultHandler handler) throws IOException;
 
     /**
      * Converts the given boolean to it's byte representation.
@@ -195,5 +222,16 @@ public interface HBaseClientService extends ControllerService {
      * @return the string represented as bytes
      */
     byte[] toBytesBinary(String s);
+
+    /**
+     * Create a transit URI from the current configuration and the specified table name.
+     * The default implementation just prepend "hbase://" to the table name and row key, i.e. "hbase://tableName/rowKey".
+     * @param tableName The name of a HBase table
+     * @param rowKey The target HBase row key, this can be null or empty string if the operation is not targeted to a specific row
+     * @return a qualified transit URI which can identify a HBase table row in a HBase cluster
+     */
+    default String toTransitUri(String tableName, String rowKey) {
+        return "hbase://" + tableName + (rowKey != null && !rowKey.isEmpty() ? "/" + rowKey : "");
+    }
 
 }

@@ -16,6 +16,8 @@
  */
 package org.apache.nifi.processors.elasticsearch;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -25,8 +27,10 @@ import okhttp3.ResponseBody;
 import org.apache.commons.io.IOUtils;
 import org.apache.nifi.annotation.behavior.DynamicProperty;
 import org.apache.nifi.annotation.behavior.EventDriven;
+import org.apache.nifi.annotation.behavior.SystemResourceConsideration;
 import org.apache.nifi.annotation.behavior.InputRequirement;
 import org.apache.nifi.annotation.behavior.SupportsBatching;
+import org.apache.nifi.annotation.behavior.SystemResource;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.annotation.lifecycle.OnScheduled;
@@ -42,8 +46,6 @@ import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.util.StringUtils;
-import org.codehaus.jackson.JsonNode;
-import org.codehaus.jackson.node.ArrayNode;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -72,6 +74,7 @@ import static org.apache.commons.lang3.StringUtils.trimToEmpty;
         value = "The value to set it to",
         supportsExpressionLanguage = true,
         description = "Adds the specified property name/value as a query parameter in the Elasticsearch URL used for processing")
+@SystemResourceConsideration(resource = SystemResource.MEMORY)
 public class PutElasticsearchHttp extends AbstractElasticsearchHttpProcessor {
 
     public static final Relationship REL_SUCCESS = new Relationship.Builder().name("success")
@@ -355,21 +358,34 @@ public class PutElasticsearchHttp extends AbstractElasticsearchHttpProcessor {
                         ArrayNode itemNodeArray = (ArrayNode) responseJson.get("items");
                         if (itemNodeArray.size() > 0) {
                             // All items are returned whether they succeeded or failed, so iterate through the item array
-                            // at the same time as the flow file list, moving each to success or failure accordingly
+                            // at the same time as the flow file list, moving each to success or failure accordingly,
+                            // but only keep the first error for logging
+                            String errorReason = null;
                             for (int i = itemNodeArray.size() - 1; i >= 0; i--) {
                                 JsonNode itemNode = itemNodeArray.get(i);
-                                FlowFile flowFile = flowFilesToTransfer.remove(i);
-                                int status = itemNode.findPath("status").asInt();
-                                if (!isSuccess(status)) {
-                                    String reason = itemNode.findPath("//error/reason").asText();
-                                    logger.error("Failed to insert {} into Elasticsearch due to {}, transferring to failure",
-                                            new Object[]{flowFile, reason});
-                                    session.transfer(flowFile, REL_FAILURE);
+                                if (flowFilesToTransfer.size() > i) {
+                                    FlowFile flowFile = flowFilesToTransfer.remove(i);
+                                    int status = itemNode.findPath("status").asInt();
+                                    if (!isSuccess(status)) {
+                                        if (errorReason == null) {
+                                            // Use "result" if it is present; this happens for status codes like 404 Not Found, which may not have an error/reason
+                                            String reason = itemNode.findPath("//result").asText();
+                                            if (StringUtils.isEmpty(reason)) {
+                                                // If there was no result, we expect an error with a string description in the "reason" field
+                                                reason = itemNode.findPath("//error/reason").asText();
+                                            }
+                                            errorReason = reason;
+                                            logger.error("Failed to process {} due to {}, transferring to failure",
+                                                    new Object[]{flowFile, errorReason});
+                                        }
+                                        flowFile = session.penalize(flowFile);
+                                        session.transfer(flowFile, REL_FAILURE);
 
-                                } else {
-                                    session.transfer(flowFile, REL_SUCCESS);
-                                    // Record provenance event
-                                    session.getProvenanceReporter().send(flowFile, url.toString());
+                                    } else {
+                                        session.transfer(flowFile, REL_SUCCESS);
+                                        // Record provenance event
+                                        session.getProvenanceReporter().send(flowFile, url.toString());
+                                    }
                                 }
                             }
                         }

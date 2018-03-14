@@ -19,7 +19,6 @@ package org.apache.nifi.avro;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
@@ -27,9 +26,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -47,6 +48,8 @@ import org.apache.avro.generic.GenericFixed;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.avro.util.Utf8;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.nifi.serialization.SimpleRecordSchema;
 import org.apache.nifi.serialization.record.DataType;
 import org.apache.nifi.serialization.record.MapRecord;
@@ -150,9 +153,20 @@ public class AvroTypeUtil {
                 final ChoiceDataType choiceDataType = (ChoiceDataType) dataType;
                 final List<DataType> options = choiceDataType.getPossibleSubTypes();
 
+                // We need to keep track of which types have been added to the union, because if we have
+                // two elements in the UNION with the same type, it will fail - even if the logical type is
+                // different. So if we have an int and a logical type date (which also has a 'concrete type' of int)
+                // then an Exception will be thrown when we try to create the union. To avoid this, we just keep track
+                // of the Types and avoid adding it in such a case.
                 final List<Schema> unionTypes = new ArrayList<>(options.size());
+                final Set<Type> typesAdded = new HashSet<>();
+
                 for (final DataType option : options) {
-                    unionTypes.add(buildAvroSchema(option, fieldName, false));
+                    final Schema optionSchema = buildAvroSchema(option, fieldName, false);
+                    if (!typesAdded.contains(optionSchema.getType())) {
+                        unionTypes.add(optionSchema);
+                        typesAdded.add(optionSchema.getType());
+                    }
                 }
 
                 schema = Schema.createUnion(unionTypes);
@@ -213,6 +227,17 @@ public class AvroTypeUtil {
     }
 
     private static Schema nullable(final Schema schema) {
+        if (schema.getType() == Type.UNION) {
+            final List<Schema> unionTypes = new ArrayList<>(schema.getTypes());
+            final Schema nullSchema = Schema.create(Type.NULL);
+            if (unionTypes.contains(nullSchema)) {
+                return schema;
+            }
+
+            unionTypes.add(nullSchema);
+            return Schema.createUnion(unionTypes);
+        }
+
         return Schema.createUnion(Schema.create(Type.NULL), schema);
     }
 
@@ -289,12 +314,8 @@ public class AvroTypeUtil {
                         final String fieldName = field.name();
                         final Schema fieldSchema = field.schema();
                         final DataType fieldType = determineDataType(fieldSchema, knownRecordTypes);
-
-                        if (field.defaultVal() == JsonProperties.NULL_VALUE) {
-                            recordFields.add(new RecordField(fieldName, fieldType, field.aliases()));
-                        } else {
-                            recordFields.add(new RecordField(fieldName, fieldType, field.defaultVal(), field.aliases()));
-                        }
+                        final boolean nullable = isNullable(fieldSchema);
+                        addFieldToList(recordFields, field, fieldName, fieldSchema, fieldType, nullable);
                     }
 
                     recordSchema.setFields(recordFields);
@@ -370,12 +391,7 @@ public class AvroTypeUtil {
             final Schema fieldSchema = field.schema();
             final DataType dataType = AvroTypeUtil.determineDataType(fieldSchema, knownRecords);
             final boolean nullable = isNullable(fieldSchema);
-
-            if (field.defaultVal() == JsonProperties.NULL_VALUE) {
-                recordFields.add(new RecordField(fieldName, dataType, field.aliases(), nullable));
-            } else {
-                recordFields.add(new RecordField(fieldName, dataType, field.defaultVal(), field.aliases(), nullable));
-            }
+            addFieldToList(recordFields, field, fieldName, fieldSchema, dataType, nullable);
         }
 
         recordSchema.setFields(recordFields);
@@ -416,15 +432,41 @@ public class AvroTypeUtil {
         return bb;
     }
 
+    /**
+     * Method that attempts to map a record field into a provided schema
+     * @param avroSchema - Schema to map into
+     * @param recordField - The field of the record to be mapped
+     * @return Pair with the LHS being the field name and RHS being the mapped field from the schema
+     */
+    protected static Pair<String, Field> lookupField(final Schema avroSchema, final RecordField recordField) {
+        String fieldName = recordField.getFieldName();
+
+        // Attempt to locate the field as is in a true 1:1 mapping with the same name
+        Field field = avroSchema.getField(fieldName);
+        if (field == null) {
+            // No straight mapping was found, so check the aliases to see if it can be mapped
+            for(final String alias: recordField.getAliases()) {
+                field = avroSchema.getField(alias);
+                if (field != null) {
+                    fieldName = alias;
+                    break;
+                }
+            }
+        }
+
+        return new ImmutablePair<>(fieldName, field);
+    }
+
     public static GenericRecord createAvroRecord(final Record record, final Schema avroSchema) throws IOException {
         final GenericRecord rec = new GenericData.Record(avroSchema);
         final RecordSchema recordSchema = record.getSchema();
 
         for (final RecordField recordField : recordSchema.getFields()) {
             final Object rawValue = record.getValue(recordField);
-            final String fieldName = recordField.getFieldName();
 
-            final Field field = avroSchema.getField(fieldName);
+            Pair<String, Field> fieldPair = lookupField(avroSchema, recordField);
+            final String fieldName = fieldPair.getLeft();
+            final Field field = fieldPair.getRight();
             if (field == null) {
                 continue;
             }
@@ -447,10 +489,32 @@ public class AvroTypeUtil {
 
     /**
      * Convert a raw value to an Avro object to serialize in Avro type system.
-     * The counter-part method which reads an Avro object back to a raw value is {@link #normalizeValue(Object, Schema)}.
+     * The counter-part method which reads an Avro object back to a raw value is {@link #normalizeValue(Object, Schema, String)}.
      */
     public static Object convertToAvroObject(final Object rawValue, final Schema fieldSchema) {
         return convertToAvroObject(rawValue, fieldSchema, fieldSchema.getName());
+    }
+
+    /**
+     * Adds fields to <tt>recordFields</tt> list.
+     * @param recordFields - record fields are added to this list.
+     * @param field - the field
+     * @param fieldName - field name
+     * @param fieldSchema - field schema
+     * @param dataType -  data type
+     * @param nullable - is nullable?
+     */
+    private static void addFieldToList(final List<RecordField> recordFields, final Field field, final String fieldName,
+            final Schema fieldSchema, final DataType dataType, final boolean nullable) {
+        if (field.defaultVal() == JsonProperties.NULL_VALUE) {
+            recordFields.add(new RecordField(fieldName, dataType, field.aliases(), nullable));
+        } else {
+            Object defaultValue = field.defaultVal();
+            if (fieldSchema.getType() == Schema.Type.ARRAY && !DataTypeUtils.isArrayTypeCompatible(defaultValue)) {
+                defaultValue = defaultValue instanceof List ? ((List<?>) defaultValue).toArray() : new Object[0];
+            }
+            recordFields.add(new RecordField(fieldName, dataType, defaultValue, field.aliases(), nullable));
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -506,18 +570,29 @@ public class AvroTypeUtil {
                 final LogicalType logicalType = fieldSchema.getLogicalType();
                 if (logicalType != null && LOGICAL_TYPE_DECIMAL.equals(logicalType.getName())) {
                     final LogicalTypes.Decimal decimalType = (LogicalTypes.Decimal) logicalType;
-                    final BigDecimal decimal;
+                    final BigDecimal rawDecimal;
                     if (rawValue instanceof BigDecimal) {
-                        final BigDecimal rawDecimal = (BigDecimal) rawValue;
-                        final int desiredScale = decimalType.getScale();
-                        // If the desired scale is different than this value's coerce scale.
-                        decimal = rawDecimal.scale() == desiredScale ? rawDecimal : rawDecimal.setScale(desiredScale, BigDecimal.ROUND_HALF_UP);
+                        rawDecimal = (BigDecimal) rawValue;
+
                     } else if (rawValue instanceof Double) {
-                        // Scale is adjusted based on precision. If double was 123.456 and precision is 5, then decimal would be 123.46.
-                        decimal = new BigDecimal((Double) rawValue, new MathContext(decimalType.getPrecision()));
+                        rawDecimal = BigDecimal.valueOf((Double) rawValue);
+
+                    } else if (rawValue instanceof String) {
+                        rawDecimal = new BigDecimal((String) rawValue);
+
+                    } else if (rawValue instanceof Integer) {
+                        rawDecimal = new BigDecimal((Integer) rawValue);
+
+                    } else if (rawValue instanceof Long) {
+                        rawDecimal = new BigDecimal((Long) rawValue);
+
                     } else {
                         throw new IllegalTypeConversionException("Cannot convert value " + rawValue + " of type " + rawValue.getClass() + " to a logical decimal");
                     }
+                    // If the desired scale is different than this value's coerce scale.
+                    final int desiredScale = decimalType.getScale();
+                    final BigDecimal decimal = rawDecimal.scale() == desiredScale
+                            ? rawDecimal : rawDecimal.setScale(desiredScale, BigDecimal.ROUND_HALF_UP);
                     return new Conversions.DecimalConversion().toBytes(decimal, fieldSchema, logicalType);
                 }
                 if (rawValue instanceof byte[]) {
@@ -601,6 +676,7 @@ public class AvroTypeUtil {
         final Map<String, Object> values = new HashMap<>(recordSchema.getFieldCount());
 
         for (final RecordField recordField : recordSchema.getFields()) {
+
             Object value = avroRecord.get(recordField.getFieldName());
             if (value == null) {
                 for (final String alias : recordField.getAliases()) {
@@ -612,6 +688,7 @@ public class AvroTypeUtil {
             }
 
             final String fieldName = recordField.getFieldName();
+            try {
             final Field avroField = avroRecord.getSchema().getField(fieldName);
             if (avroField == null) {
                 values.put(fieldName, null);
@@ -625,6 +702,10 @@ public class AvroTypeUtil {
             final Object coercedValue = DataTypeUtils.convertType(rawValue, desiredType, fieldName);
 
             values.put(fieldName, coercedValue);
+            } catch (Exception ex) {
+                logger.debug("fail to convert field " + fieldName, ex );
+                throw ex;
+            }
         }
 
         return values;
@@ -691,6 +772,10 @@ public class AvroTypeUtil {
                     return true;
                 }
                 break;
+            case MAP:
+                if (value instanceof Map) {
+                    return true;
+                }
         }
 
         return DataTypeUtils.isCompatibleDataType(value, dataType);
@@ -797,13 +882,7 @@ public class AvroTypeUtil {
                     map.put(key, obj);
                 }
 
-                final DataType elementType = AvroTypeUtil.determineDataType(avroSchema.getValueType());
-                final List<RecordField> mapFields = new ArrayList<>();
-                for (final String key : map.keySet()) {
-                    mapFields.add(new RecordField(key, elementType));
-                }
-                final RecordSchema mapSchema = new SimpleRecordSchema(mapFields);
-                return new MapRecord(mapSchema, map);
+                return map;
         }
 
         return value;

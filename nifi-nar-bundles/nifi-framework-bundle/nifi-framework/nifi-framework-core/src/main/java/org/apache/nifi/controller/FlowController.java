@@ -16,39 +16,6 @@
  */
 package org.apache.nifi.controller;
 
-import static java.util.Objects.requireNonNull;
-
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.stream.Collectors;
-
-import javax.net.ssl.SSLContext;
-
 import org.apache.commons.collections4.Predicate;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.action.Action;
@@ -197,6 +164,11 @@ import org.apache.nifi.provenance.ProvenanceRepository;
 import org.apache.nifi.provenance.StandardProvenanceEventRecord;
 import org.apache.nifi.registry.ComponentVariableRegistry;
 import org.apache.nifi.registry.VariableRegistry;
+import org.apache.nifi.registry.flow.FlowRegistryClient;
+import org.apache.nifi.registry.flow.StandardVersionControlInformation;
+import org.apache.nifi.registry.flow.VersionControlInformation;
+import org.apache.nifi.registry.flow.VersionedConnection;
+import org.apache.nifi.registry.flow.VersionedProcessGroup;
 import org.apache.nifi.registry.variable.MutableVariableRegistry;
 import org.apache.nifi.registry.variable.StandardComponentVariableRegistry;
 import org.apache.nifi.remote.HttpRemoteSiteListener;
@@ -229,6 +201,7 @@ import org.apache.nifi.util.ComponentIdGenerator;
 import org.apache.nifi.util.FormatUtils;
 import org.apache.nifi.util.NiFiProperties;
 import org.apache.nifi.util.ReflectionUtils;
+import org.apache.nifi.util.SnippetUtils;
 import org.apache.nifi.web.ResourceNotFoundException;
 import org.apache.nifi.web.api.dto.BatchSettingsDTO;
 import org.apache.nifi.web.api.dto.BundleDTO;
@@ -252,7 +225,38 @@ import org.apache.zookeeper.server.quorum.QuorumPeerConfig.ConfigException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.sun.jersey.api.client.ClientHandlerException;
+import javax.net.ssl.SSLContext;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Collectors;
+
+import static java.util.Objects.requireNonNull;
 
 public class FlowController implements EventAccess, ControllerServiceProvider, ReportingTaskProvider,
     QueueProvider, Authorizable, ProvenanceAuthorizableFactory, NodeTypeProvider, IdentifierLookup, ReloadComponent {
@@ -280,6 +284,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
     private final AtomicInteger maxEventDrivenThreads;
     private final AtomicReference<FlowEngine> timerDrivenEngineRef;
     private final AtomicReference<FlowEngine> eventDrivenEngineRef;
+    private final EventDrivenSchedulingAgent eventDrivenSchedulingAgent;
 
     private final ContentRepository contentRepository;
     private final FlowFileRepository flowFileRepository;
@@ -331,6 +336,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
     private final List<RemoteGroupPort> startRemoteGroupPortsAfterInitialization;
     private final LeaderElectionManager leaderElectionManager;
     private final ClusterCoordinator clusterCoordinator;
+    private final FlowRegistryClient flowRegistryClient;
 
     /**
      * true if controller is configured to operate in a clustered environment
@@ -397,7 +403,8 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
             final AuditService auditService,
             final StringEncryptor encryptor,
             final BulletinRepository bulletinRepo,
-            final VariableRegistry variableRegistry) {
+            final VariableRegistry variableRegistry,
+            final FlowRegistryClient flowRegistryClient) {
 
         return new FlowController(
                 flowFileEventRepo,
@@ -411,7 +418,8 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
                 /* cluster coordinator */ null,
                 /* heartbeat monitor */ null,
                 /* leader election manager */ null,
-                /* variable registry */ variableRegistry);
+                /* variable registry */ variableRegistry,
+                flowRegistryClient);
     }
 
     public static FlowController createClusteredInstance(
@@ -425,7 +433,8 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
             final ClusterCoordinator clusterCoordinator,
             final HeartbeatMonitor heartbeatMonitor,
             final LeaderElectionManager leaderElectionManager,
-            final VariableRegistry variableRegistry) {
+            final VariableRegistry variableRegistry,
+            final FlowRegistryClient flowRegistryClient) {
 
         final FlowController flowController = new FlowController(
                 flowFileEventRepo,
@@ -439,7 +448,8 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
                 clusterCoordinator,
                 heartbeatMonitor,
                 leaderElectionManager,
-                variableRegistry);
+                variableRegistry,
+                flowRegistryClient);
 
         return flowController;
     }
@@ -456,7 +466,8 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
             final ClusterCoordinator clusterCoordinator,
             final HeartbeatMonitor heartbeatMonitor,
             final LeaderElectionManager leaderElectionManager,
-            final VariableRegistry variableRegistry) {
+            final VariableRegistry variableRegistry,
+            final FlowRegistryClient flowRegistryClient) {
 
         maxTimerDrivenThreads = new AtomicInteger(10);
         maxEventDrivenThreads = new AtomicInteger(5);
@@ -498,12 +509,14 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
             throw new RuntimeException(e);
         }
 
-        processScheduler = new StandardProcessScheduler(this, encryptor, stateManagerProvider, this.nifiProperties);
+        processScheduler = new StandardProcessScheduler(timerDrivenEngineRef.get(), this, encryptor, stateManagerProvider, this.nifiProperties);
         eventDrivenWorkerQueue = new EventDrivenWorkerQueue(false, false, processScheduler);
 
         final ProcessContextFactory contextFactory = new ProcessContextFactory(contentRepository, flowFileRepository, flowFileEventRepository, counterRepositoryRef.get(), provenanceRepository);
-        processScheduler.setSchedulingAgent(SchedulingStrategy.EVENT_DRIVEN, new EventDrivenSchedulingAgent(
-            eventDrivenEngineRef.get(), this, stateManagerProvider, eventDrivenWorkerQueue, contextFactory, maxEventDrivenThreads.get(), encryptor));
+
+        eventDrivenSchedulingAgent = new EventDrivenSchedulingAgent(
+            eventDrivenEngineRef.get(), this, stateManagerProvider, eventDrivenWorkerQueue, contextFactory, maxEventDrivenThreads.get(), encryptor);
+        processScheduler.setSchedulingAgent(SchedulingStrategy.EVENT_DRIVEN, eventDrivenSchedulingAgent);
 
         final QuartzSchedulingAgent quartzSchedulingAgent = new QuartzSchedulingAgent(this, timerDrivenEngineRef.get(), contextFactory, encryptor);
         final TimerDrivenSchedulingAgent timerDrivenAgent = new TimerDrivenSchedulingAgent(this, timerDrivenEngineRef.get(), contextFactory, encryptor, this.nifiProperties);
@@ -516,6 +529,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         startRemoteGroupPortsAfterInitialization = new ArrayList<>();
         this.authorizer = authorizer;
         this.auditService = auditService;
+        this.flowRegistryClient = flowRegistryClient;
 
         final String gracefulShutdownSecondsVal = nifiProperties.getProperty(GRACEFUL_SHUTDOWN_PERIOD);
         long shutdownSecs;
@@ -754,6 +768,23 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
                 }
             }, 0L, 30L, TimeUnit.SECONDS);
 
+            timerDrivenEngineRef.get().scheduleWithFixedDelay(new Runnable() {
+                @Override
+                public void run() {
+                    final ProcessGroup rootGroup = getRootGroup();
+                    final List<ProcessGroup> allGroups = rootGroup.findAllProcessGroups();
+                    allGroups.add(rootGroup);
+
+                    for (final ProcessGroup group : allGroups) {
+                        try {
+                            group.synchronizeWithFlowRegistry(flowRegistryClient);
+                        } catch (final Exception e) {
+                            LOG.error("Failed to synchronize {} with Flow Registry", group, e);
+                        }
+                    }
+                }
+            }, 5, 60, TimeUnit.SECONDS);
+
             initialized.set(true);
         } finally {
             writeLock.unlock();
@@ -805,7 +836,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
 
                     try {
                         if (connectable instanceof ProcessorNode) {
-                            connectable.getProcessGroup().startProcessor((ProcessorNode) connectable);
+                            connectable.getProcessGroup().startProcessor((ProcessorNode) connectable, true);
                         } else {
                             startConnectable(connectable);
                         }
@@ -1630,13 +1661,13 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
     /**
      * Updates the number of threads that can be simultaneously used for
      * executing processors.
+     * This method must be called while holding the write lock!
      *
-     * @param maxThreadCount This method must be called while holding the write
-     * lock!
+     * @param maxThreadCount max number of threads
      */
     private void setMaxThreadCount(final int maxThreadCount, final FlowEngine engine, final AtomicInteger maxThreads) {
         if (maxThreadCount < 1) {
-            throw new IllegalArgumentException();
+            throw new IllegalArgumentException("Cannot set max number of threads to less than 2");
         }
 
         maxThreads.getAndSet(maxThreadCount);
@@ -1748,6 +1779,11 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
      * processor
      */
     public void instantiateSnippet(final ProcessGroup group, final FlowSnippetDTO dto) throws ProcessorInstantiationException {
+        instantiateSnippet(group, dto, true);
+        group.findAllRemoteProcessGroups().stream().forEach(RemoteProcessGroup::initialize);
+    }
+
+    private void instantiateSnippet(final ProcessGroup group, final FlowSnippetDTO dto, final boolean topLevel) throws ProcessorInstantiationException {
         writeLock.lock();
         try {
             validateSnippetContents(requireNonNull(group), dto);
@@ -1762,6 +1798,9 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
                 serviceNode.setAnnotationData(controllerServiceDTO.getAnnotationData());
                 serviceNode.setComments(controllerServiceDTO.getComments());
                 serviceNode.setName(controllerServiceDTO.getName());
+                if (!topLevel) {
+                    serviceNode.setVersionedComponentId(controllerServiceDTO.getVersionedComponentId());
+                }
 
                 group.addControllerService(serviceNode);
             }
@@ -1785,6 +1824,10 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
                 }
 
                 label.setStyle(labelDTO.getStyle());
+                if (!topLevel) {
+                    label.setVersionedComponentId(labelDTO.getVersionedComponentId());
+                }
+
                 group.addLabel(label);
             }
 
@@ -1792,6 +1835,10 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
             for (final FunnelDTO funnelDTO : dto.getFunnels()) {
                 final Funnel funnel = createFunnel(funnelDTO.getId());
                 funnel.setPosition(toPosition(funnelDTO.getPosition()));
+                if (!topLevel) {
+                    funnel.setVersionedComponentId(funnelDTO.getVersionedComponentId());
+                }
+
                 group.addFunnel(funnel);
             }
 
@@ -1813,6 +1860,9 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
                     inputPort = createLocalInputPort(portDTO.getId(), portDTO.getName());
                 }
 
+                if (!topLevel) {
+                    inputPort.setVersionedComponentId(portDTO.getVersionedComponentId());
+                }
                 inputPort.setPosition(toPosition(portDTO.getPosition()));
                 inputPort.setProcessGroup(group);
                 inputPort.setComments(portDTO.getComments());
@@ -1834,6 +1884,9 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
                     outputPort = createLocalOutputPort(portDTO.getId(), portDTO.getName());
                 }
 
+                if (!topLevel) {
+                    outputPort.setVersionedComponentId(portDTO.getVersionedComponentId());
+                }
                 outputPort.setPosition(toPosition(portDTO.getPosition()));
                 outputPort.setProcessGroup(group);
                 outputPort.setComments(portDTO.getComments());
@@ -1849,6 +1902,9 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
 
                 procNode.setPosition(toPosition(processorDTO.getPosition()));
                 procNode.setProcessGroup(group);
+                if (!topLevel) {
+                    procNode.setVersionedComponentId(processorDTO.getVersionedComponentId());
+                }
 
                 final ProcessorConfigDTO config = processorDTO.getConfig();
                 procNode.setComments(config.getComments());
@@ -1909,6 +1965,10 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
                 remoteGroup.setPosition(toPosition(remoteGroupDTO.getPosition()));
                 remoteGroup.setCommunicationsTimeout(remoteGroupDTO.getCommunicationsTimeout());
                 remoteGroup.setYieldDuration(remoteGroupDTO.getYieldDuration());
+                if (!topLevel) {
+                    remoteGroup.setVersionedComponentId(remoteGroupDTO.getVersionedComponentId());
+                }
+
                 if (remoteGroupDTO.getTransportProtocol() == null) {
                     remoteGroup.setTransportProtocol(SiteToSiteTransportProtocol.RAW);
                 } else {
@@ -1925,14 +1985,14 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
                 if (remoteGroupDTO.getContents() != null) {
                     final RemoteProcessGroupContentsDTO contents = remoteGroupDTO.getContents();
 
-                    // ensure there input ports
+                    // ensure there are input ports
                     if (contents.getInputPorts() != null) {
-                        remoteGroup.setInputPorts(convertRemotePort(contents.getInputPorts()));
+                        remoteGroup.setInputPorts(convertRemotePort(contents.getInputPorts()), false);
                     }
 
                     // ensure there are output ports
                     if (contents.getOutputPorts() != null) {
-                        remoteGroup.setOutputPorts(convertRemotePort(contents.getOutputPorts()));
+                        remoteGroup.setOutputPorts(convertRemotePort(contents.getOutputPorts()), false);
                     }
                 }
 
@@ -1952,6 +2012,12 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
                     childGroup.setVariables(groupDTO.getVariables());
                 }
 
+                // If this Process Group is 'top level' then we do not set versioned component ID's.
+                // We do this only if this component is the child of a Versioned Component.
+                if (!topLevel) {
+                    childGroup.setVersionedComponentId(groupDTO.getVersionedComponentId());
+                }
+
                 group.addProcessGroup(childGroup);
 
                 final FlowSnippetDTO contents = groupDTO.getContents();
@@ -1968,7 +2034,14 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
                 childTemplateDTO.setFunnels(contents.getFunnels());
                 childTemplateDTO.setRemoteProcessGroups(contents.getRemoteProcessGroups());
                 childTemplateDTO.setControllerServices(contents.getControllerServices());
-                instantiateSnippet(childGroup, childTemplateDTO);
+                instantiateSnippet(childGroup, childTemplateDTO, false);
+
+                if (groupDTO.getVersionControlInformation() != null) {
+                    final VersionControlInformation vci = StandardVersionControlInformation.Builder
+                        .fromDto(groupDTO.getVersionControlInformation())
+                        .build();
+                    childGroup.setVersionControlInformation(vci, Collections.emptyMap());
+                }
             }
 
             //
@@ -2012,6 +2085,9 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
                 }
 
                 final Connection connection = createConnection(connectionDTO.getId(), connectionDTO.getName(), source, destination, relationships);
+                if (!topLevel) {
+                    connection.setVersionedComponentId(connectionDTO.getVersionedComponentId());
+                }
 
                 if (connectionDTO.getBends() != null) {
                     final List<Position> bendPoints = new ArrayList<>();
@@ -2061,6 +2137,8 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
             for (final RemoteProcessGroupPortDTO port : ports) {
                 final StandardRemoteProcessGroupPortDescriptor descriptor = new StandardRemoteProcessGroupPortDescriptor();
                 descriptor.setId(port.getId());
+                descriptor.setVersionedComponentId(port.getVersionedComponentId());
+                descriptor.setTargetId(port.getTargetId());
                 descriptor.setName(port.getName());
                 descriptor.setComments(port.getComments());
                 descriptor.setTargetRunning(port.isTargetRunning());
@@ -2102,6 +2180,13 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         }
     }
 
+    private void verifyBundleInVersionedFlow(final org.apache.nifi.registry.flow.Bundle requiredBundle, final Set<BundleCoordinate> supportedBundles) {
+        final BundleCoordinate requiredCoordinate = new BundleCoordinate(requiredBundle.getGroup(), requiredBundle.getArtifact(), requiredBundle.getVersion());
+        if (!supportedBundles.contains(requiredCoordinate)) {
+            throw new IllegalStateException("Unsupported bundle: " + requiredCoordinate);
+        }
+    }
+
     private void verifyProcessorsInSnippet(final FlowSnippetDTO templateContents, final Map<String, Set<BundleCoordinate>> supportedTypes) {
         if (templateContents.getProcessors() != null) {
             templateContents.getProcessors().forEach(processor -> {
@@ -2124,6 +2209,28 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         }
     }
 
+    private void verifyProcessorsInVersionedFlow(final VersionedProcessGroup versionedFlow, final Map<String, Set<BundleCoordinate>> supportedTypes) {
+        if (versionedFlow.getProcessors() != null) {
+            versionedFlow.getProcessors().forEach(processor -> {
+                if (processor.getBundle() == null) {
+                    throw new IllegalArgumentException("Processor bundle must be specified.");
+                }
+
+                if (supportedTypes.containsKey(processor.getType())) {
+                    verifyBundleInVersionedFlow(processor.getBundle(), supportedTypes.get(processor.getType()));
+                } else {
+                    throw new IllegalStateException("Invalid Processor Type: " + processor.getType());
+                }
+            });
+        }
+
+        if (versionedFlow.getProcessGroups() != null) {
+            versionedFlow.getProcessGroups().forEach(processGroup -> {
+                verifyProcessorsInVersionedFlow(processGroup, supportedTypes);
+            });
+        }
+    }
+
     private void verifyControllerServicesInSnippet(final FlowSnippetDTO templateContents, final Map<String, Set<BundleCoordinate>> supportedTypes) {
         if (templateContents.getControllerServices() != null) {
             templateContents.getControllerServices().forEach(controllerService -> {
@@ -2142,6 +2249,28 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         if (templateContents.getProcessGroups() != null) {
             templateContents.getProcessGroups().forEach(processGroup -> {
                 verifyControllerServicesInSnippet(processGroup.getContents(), supportedTypes);
+            });
+        }
+    }
+
+    private void verifyControllerServicesInVersionedFlow(final VersionedProcessGroup versionedFlow, final Map<String, Set<BundleCoordinate>> supportedTypes) {
+        if (versionedFlow.getControllerServices() != null) {
+            versionedFlow.getControllerServices().forEach(controllerService -> {
+                if (supportedTypes.containsKey(controllerService.getType())) {
+                    if (controllerService.getBundle() == null) {
+                        throw new IllegalArgumentException("Controller Service bundle must be specified.");
+                    }
+
+                    verifyBundleInVersionedFlow(controllerService.getBundle(), supportedTypes.get(controllerService.getType()));
+                } else {
+                    throw new IllegalStateException("Invalid Controller Service Type: " + controllerService.getType());
+                }
+            });
+        }
+
+        if (versionedFlow.getProcessGroups() != null) {
+            versionedFlow.getProcessGroups().forEach(processGroup -> {
+                verifyControllerServicesInVersionedFlow(processGroup, supportedTypes);
             });
         }
     }
@@ -2184,6 +2313,44 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         }
     }
 
+    public void verifyComponentTypesInSnippet(final VersionedProcessGroup versionedFlow) {
+        final Map<String, Set<BundleCoordinate>> processorClasses = new HashMap<>();
+        for (final Class<?> c : ExtensionManager.getExtensions(Processor.class)) {
+            final String name = c.getName();
+            processorClasses.put(name, ExtensionManager.getBundles(name).stream().map(bundle -> bundle.getBundleDetails().getCoordinate()).collect(Collectors.toSet()));
+        }
+        verifyProcessorsInVersionedFlow(versionedFlow, processorClasses);
+
+        final Map<String, Set<BundleCoordinate>> controllerServiceClasses = new HashMap<>();
+        for (final Class<?> c : ExtensionManager.getExtensions(ControllerService.class)) {
+            final String name = c.getName();
+            controllerServiceClasses.put(name, ExtensionManager.getBundles(name).stream().map(bundle -> bundle.getBundleDetails().getCoordinate()).collect(Collectors.toSet()));
+        }
+        verifyControllerServicesInVersionedFlow(versionedFlow, controllerServiceClasses);
+
+        final Set<String> prioritizerClasses = new HashSet<>();
+        for (final Class<?> c : ExtensionManager.getExtensions(FlowFilePrioritizer.class)) {
+            prioritizerClasses.add(c.getName());
+        }
+
+        final Set<VersionedConnection> allConns = new HashSet<>();
+        allConns.addAll(versionedFlow.getConnections());
+        for (final VersionedProcessGroup childGroup : versionedFlow.getProcessGroups()) {
+            allConns.addAll(findAllConnections(childGroup));
+        }
+
+        for (final VersionedConnection conn : allConns) {
+            final List<String> prioritizers = conn.getPrioritizers();
+            if (prioritizers != null) {
+                for (final String prioritizer : prioritizers) {
+                    if (!prioritizerClasses.contains(prioritizer)) {
+                        throw new IllegalStateException("Invalid FlowFile Prioritizer Type: " + prioritizer);
+                    }
+                }
+            }
+        }
+    }
+
     /**
      * <p>
      * Verifies that the given DTO is valid, according to the following:
@@ -2206,25 +2373,28 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
      * </p>
      *
      * @param group group
-     * @param templateContents contents
+     * @param snippetContents contents
      */
-    private void validateSnippetContents(final ProcessGroup group, final FlowSnippetDTO templateContents) {
+    private void validateSnippetContents(final ProcessGroup group, final FlowSnippetDTO snippetContents) {
         // validate the names of Input Ports
-        for (final PortDTO port : templateContents.getInputPorts()) {
+        for (final PortDTO port : snippetContents.getInputPorts()) {
             if (group.getInputPortByName(port.getName()) != null) {
                 throw new IllegalStateException("One or more of the proposed Port names is not available in the process group");
             }
         }
 
         // validate the names of Output Ports
-        for (final PortDTO port : templateContents.getOutputPorts()) {
+        for (final PortDTO port : snippetContents.getOutputPorts()) {
             if (group.getOutputPortByName(port.getName()) != null) {
                 throw new IllegalStateException("One or more of the proposed Port names is not available in the process group");
             }
         }
 
-        verifyComponentTypesInSnippet(templateContents);
+        verifyComponentTypesInSnippet(snippetContents);
+
+        SnippetUtils.verifyNoVersionControlConflicts(snippetContents, group);
     }
+
 
     /**
      * Recursively finds all ConnectionDTO's
@@ -2239,6 +2409,18 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         }
 
         for (final ProcessGroupDTO childGroup : group.getContents().getProcessGroups()) {
+            conns.addAll(findAllConnections(childGroup));
+        }
+        return conns;
+    }
+
+    private Set<VersionedConnection> findAllConnections(final VersionedProcessGroup group) {
+        final Set<VersionedConnection> conns = new HashSet<>();
+        for (final VersionedConnection connection : group.getConnections()) {
+            conns.add(connection);
+        }
+
+        for (final VersionedProcessGroup childGroup : group.getProcessGroups()) {
             conns.addAll(findAllConnections(childGroup));
         }
         return conns;
@@ -2823,6 +3005,11 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         status.setFlowFilesTransferred(flowFilesTransferred);
         status.setBytesTransferred(bytesTransferred);
 
+        final VersionControlInformation vci = group.getVersionControlInformation();
+        if (vci != null && vci.getStatus() != null && vci.getStatus().getState() != null) {
+            status.setVersionedFlowState(vci.getStatus().getState());
+        }
+
         return status;
     }
 
@@ -2976,12 +3163,17 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
             status.setRunStatus(RunStatus.Stopped);
         }
 
+        status.setExecutionNode(procNode.getExecutionNode());
         status.setActiveThreadCount(processScheduler.getActiveThreadCount(procNode));
 
         return status;
     }
 
     public void startProcessor(final String parentGroupId, final String processorId) {
+        startProcessor(parentGroupId, processorId, true);
+    }
+
+    public void startProcessor(final String parentGroupId, final String processorId, final boolean failIfStopping) {
         final ProcessGroup group = lookupGroup(parentGroupId);
         final ProcessorNode node = group.getProcessor(processorId);
         if (node == null) {
@@ -2991,7 +3183,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         writeLock.lock();
         try {
             if (initialized.get()) {
-                group.startProcessor(node);
+                group.startProcessor(node, failIfStopping);
             } else {
                 startConnectablesAfterInitialization.add(node);
             }
@@ -3149,7 +3341,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
 
         if (firstTimeAdded) {
             final ReportingInitializationContext config = new StandardReportingInitializationContext(id, taskNode.getName(),
-                    SchedulingStrategy.TIMER_DRIVEN, "1 min", taskNode.getLogger(), this, nifiProperties);
+                    SchedulingStrategy.TIMER_DRIVEN, "1 min", taskNode.getLogger(), this, nifiProperties, this);
 
             try {
                 taskNode.getReportingTask().initialize(config);
@@ -3255,8 +3447,8 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         if (isTerminated()) {
             throw new IllegalStateException("Cannot start reporting task " + reportingTaskNode.getIdentifier() + " because the controller is terminated");
         }
-
         reportingTaskNode.verifyCanStart();
+        reportingTaskNode.reloadAdditionalResourcesIfNecessary();
         processScheduler.schedule(reportingTaskNode);
     }
 
@@ -3303,6 +3495,10 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
     @Override
     public Set<ReportingTaskNode> getAllReportingTasks() {
         return new HashSet<>(reportingTasks.values());
+    }
+
+    public FlowRegistryClient getFlowRegistryClient() {
+        return flowRegistryClient;
     }
 
     @Override
@@ -3375,6 +3571,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
     @Override
     public void enableReportingTask(final ReportingTaskNode reportingTaskNode) {
         reportingTaskNode.verifyCanEnable();
+        reportingTaskNode.reloadAdditionalResourcesIfNecessary();
         processScheduler.enableReportingTask(reportingTaskNode);
     }
 
@@ -3415,9 +3612,19 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
     }
 
     @Override
+    public Future<Void> enableControllerServicesAsync(final Collection<ControllerServiceNode> serviceNodes) {
+        return controllerServiceProvider.enableControllerServicesAsync(serviceNodes);
+    }
+
+    @Override
     public CompletableFuture<Void> disableControllerService(final ControllerServiceNode serviceNode) {
         serviceNode.verifyCanDisable();
         return controllerServiceProvider.disableControllerService(serviceNode);
+    }
+
+    @Override
+    public Future<Void> disableControllerServicesAsync(final Collection<ControllerServiceNode> serviceNodes) {
+        return controllerServiceProvider.disableControllerServicesAsync(serviceNodes);
     }
 
     @Override
@@ -3582,7 +3789,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
 
     public int getActiveThreadCount() {
         final int timerDrivenCount = timerDrivenEngineRef.get().getActiveCount();
-        final int eventDrivenCount = eventDrivenEngineRef.get().getActiveCount();
+        final int eventDrivenCount = eventDrivenSchedulingAgent.getActiveThreadCount();
         return timerDrivenCount + eventDrivenCount;
     }
 
@@ -4399,7 +4606,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         for (final RemoteProcessGroup remoteGroup : remoteGroups) {
             try {
                 remoteGroup.refreshFlowContents();
-            } catch (final CommunicationsException | ClientHandlerException e) {
+            } catch (final CommunicationsException e) {
                 LOG.warn("Unable to communicate with remote instance {} due to {}", remoteGroup, e.toString());
                 if (LOG.isDebugEnabled()) {
                     LOG.warn("", e);

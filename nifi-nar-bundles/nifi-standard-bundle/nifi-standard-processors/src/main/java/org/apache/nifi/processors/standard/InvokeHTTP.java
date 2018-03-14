@@ -20,6 +20,8 @@ import com.burgstaller.okhttp.AuthenticationCacheInterceptor;
 import com.burgstaller.okhttp.CachingAuthenticatorDecorator;
 import com.burgstaller.okhttp.digest.CachingAuthenticator;
 import com.burgstaller.okhttp.digest.DigestAuthenticator;
+import com.google.common.io.Files;
+import okhttp3.Cache;
 import okhttp3.Credentials;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -48,6 +50,7 @@ import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.flowfile.attributes.CoreAttributes;
 import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.AbstractProcessor;
+import org.apache.nifi.processor.DataUnit;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processor.Relationship;
@@ -62,6 +65,7 @@ import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 
 import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSession;
@@ -69,6 +73,8 @@ import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
+
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -147,6 +153,9 @@ public final class InvokeHTTP extends AbstractProcessor {
             EXCEPTION_CLASS, EXCEPTION_MESSAGE,
             "uuid", "filename", "path")));
 
+    public static final String HTTP = "http";
+    public static final String HTTPS = "https";
+
     // properties
     public static final PropertyDescriptor PROP_METHOD = new PropertyDescriptor.Builder()
             .name("HTTP Method")
@@ -212,9 +221,19 @@ public final class InvokeHTTP extends AbstractProcessor {
 
     public static final PropertyDescriptor PROP_SSL_CONTEXT_SERVICE = new PropertyDescriptor.Builder()
             .name("SSL Context Service")
-            .description("The SSL Context Service used to provide client certificate information for TLS/SSL (https) connections.")
+            .description("The SSL Context Service used to provide client certificate information for TLS/SSL (https) connections."
+                    + " It is also used to connect to HTTPS Proxy.")
             .required(false)
             .identifiesControllerService(SSLContextService.class)
+            .build();
+
+    public static final PropertyDescriptor PROP_PROXY_TYPE = new PropertyDescriptor.Builder()
+            .name("Proxy Type")
+            .displayName("Proxy Type")
+            .description("The type of the proxy we are connecting to. Must be either " + HTTP + " or " + HTTPS)
+            .defaultValue(HTTP)
+            .expressionLanguageSupported(true)
+            .addValidator(StandardValidators.NON_EMPTY_EL_VALIDATOR)
             .build();
 
     public static final PropertyDescriptor PROP_PROXY_HOST = new PropertyDescriptor.Builder()
@@ -222,6 +241,7 @@ public final class InvokeHTTP extends AbstractProcessor {
             .description("The fully qualified hostname or IP address of the proxy server")
             .required(false)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+            .expressionLanguageSupported(true)
             .build();
 
     public static final PropertyDescriptor PROP_PROXY_PORT = new PropertyDescriptor.Builder()
@@ -229,6 +249,7 @@ public final class InvokeHTTP extends AbstractProcessor {
             .description("The port of the proxy server")
             .required(false)
             .addValidator(StandardValidators.PORT_VALIDATOR)
+            .expressionLanguageSupported(true)
             .build();
 
     public static final PropertyDescriptor PROP_PROXY_USER = new PropertyDescriptor.Builder()
@@ -237,6 +258,7 @@ public final class InvokeHTTP extends AbstractProcessor {
             .description("Username to set when authenticating against proxy")
             .required(false)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+            .expressionLanguageSupported(true)
             .build();
 
     public static final PropertyDescriptor PROP_PROXY_PASSWORD = new PropertyDescriptor.Builder()
@@ -246,17 +268,18 @@ public final class InvokeHTTP extends AbstractProcessor {
             .required(false)
             .sensitive(true)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+            .expressionLanguageSupported(true)
             .build();
 
     public static final PropertyDescriptor PROP_CONTENT_TYPE = new PropertyDescriptor.Builder()
-        .name("Content-Type")
-        .description("The Content-Type to specify for when content is being transmitted through a PUT, POST or PATCH. "
-            + "In the case of an empty value after evaluating an expression language expression, Content-Type defaults to " + DEFAULT_CONTENT_TYPE)
-        .required(true)
-        .expressionLanguageSupported(true)
-        .defaultValue("${" + CoreAttributes.MIME_TYPE.key() + "}")
-        .addValidator(StandardValidators.createAttributeExpressionLanguageValidator(AttributeExpression.ResultType.STRING))
-        .build();
+            .name("Content-Type")
+            .description("The Content-Type to specify for when content is being transmitted through a PUT, POST or PATCH. "
+                    + "In the case of an empty value after evaluating an expression language expression, Content-Type defaults to " + DEFAULT_CONTENT_TYPE)
+            .required(true)
+            .expressionLanguageSupported(true)
+            .defaultValue("${" + CoreAttributes.MIME_TYPE.key() + "}")
+            .addValidator(StandardValidators.createAttributeExpressionLanguageValidator(AttributeExpression.ResultType.STRING))
+            .build();
 
     public static final PropertyDescriptor PROP_SEND_BODY = new PropertyDescriptor.Builder()
             .name("send-message-body")
@@ -370,6 +393,24 @@ public final class InvokeHTTP extends AbstractProcessor {
             .allowableValues("true", "false")
             .build();
 
+    public static final PropertyDescriptor PROP_USE_ETAG = new PropertyDescriptor.Builder()
+            .name("use-etag")
+            .description("Enable HTTP entity tag (ETag) support for HTTP requests.")
+            .displayName("Use HTTP ETag")
+            .required(true)
+            .defaultValue("false")
+            .allowableValues("true", "false")
+            .build();
+
+    public static final PropertyDescriptor PROP_ETAG_MAX_CACHE_SIZE = new PropertyDescriptor.Builder()
+            .name("etag-max-cache-size")
+            .description("The maximum size that the ETag cache should be allowed to grow to. The default size is 10MB.")
+            .displayName("Maximum ETag Cache Size")
+            .required(true)
+            .defaultValue("10MB")
+            .addValidator(StandardValidators.DATA_SIZE_VALIDATOR)
+            .build();
+
     public static final List<PropertyDescriptor> PROPERTIES = Collections.unmodifiableList(Arrays.asList(
             PROP_METHOD,
             PROP_URL,
@@ -383,6 +424,7 @@ public final class InvokeHTTP extends AbstractProcessor {
             PROP_BASIC_AUTH_PASSWORD,
             PROP_PROXY_HOST,
             PROP_PROXY_PORT,
+            PROP_PROXY_TYPE,
             PROP_PROXY_USER,
             PROP_PROXY_PASSWORD,
             PROP_PUT_OUTPUT_IN_ATTRIBUTE,
@@ -394,7 +436,9 @@ public final class InvokeHTTP extends AbstractProcessor {
             PROP_CONTENT_TYPE,
             PROP_SEND_BODY,
             PROP_USE_CHUNKED_ENCODING,
-            PROP_PENALIZE_NO_RETRY));
+            PROP_PENALIZE_NO_RETRY,
+            PROP_USE_ETAG,
+            PROP_ETAG_MAX_CACHE_SIZE));
 
     // relationships
     public static final Relationship REL_SUCCESS_REQ = new Relationship.Builder()
@@ -504,8 +548,20 @@ public final class InvokeHTTP extends AbstractProcessor {
         if ((proxyUserSet && !proxyPwdSet) || (!proxyUserSet && proxyPwdSet)) {
             results.add(new ValidationResult.Builder().subject("Proxy User and Password").valid(false).explanation("If Proxy Username or Proxy Password is set, both must be set").build());
         }
-        if(proxyUserSet && !proxyHostSet) {
+        if (proxyUserSet && !proxyHostSet) {
             results.add(new ValidationResult.Builder().subject("Proxy").valid(false).explanation("If Proxy username is set, proxy host must be set").build());
+        }
+
+        final String proxyType = validationContext.getProperty(PROP_PROXY_TYPE).evaluateAttributeExpressions().getValue();
+
+        if (!HTTP.equals(proxyType) && !HTTPS.equals(proxyType)) {
+            results.add(new ValidationResult.Builder().subject(PROP_PROXY_TYPE.getDisplayName()).valid(false)
+                    .explanation(PROP_PROXY_TYPE.getDisplayName() + " must be either " + HTTP + " or " + HTTPS).build());
+        }
+
+        if (HTTPS.equals(proxyType)
+                && !validationContext.getProperty(PROP_SSL_CONTEXT_SERVICE).isSet()) {
+            results.add(new ValidationResult.Builder().subject("SSL Context Service").valid(false).explanation("If Proxy Type is HTTPS, SSL Context Service must be set").build());
         }
 
         return results;
@@ -518,11 +574,21 @@ public final class InvokeHTTP extends AbstractProcessor {
         OkHttpClient.Builder okHttpClientBuilder = new OkHttpClient().newBuilder();
 
         // Add a proxy if set
-        final String proxyHost = context.getProperty(PROP_PROXY_HOST).getValue();
-        final Integer proxyPort = context.getProperty(PROP_PROXY_PORT).asInteger();
+        final String proxyHost = context.getProperty(PROP_PROXY_HOST).evaluateAttributeExpressions().getValue();
+        final Integer proxyPort = context.getProperty(PROP_PROXY_PORT).evaluateAttributeExpressions().asInteger();
+        final String proxyType = context.getProperty(PROP_PROXY_TYPE).evaluateAttributeExpressions().getValue();
+        boolean isHttpsProxy = false;
         if (proxyHost != null && proxyPort != null) {
             final Proxy proxy = new Proxy(Type.HTTP, new InetSocketAddress(proxyHost, proxyPort));
             okHttpClientBuilder.proxy(proxy);
+            isHttpsProxy = HTTPS.equals(proxyType);
+        }
+
+        // configure ETag cache if enabled
+        final boolean etagEnabled = context.getProperty(PROP_USE_ETAG).asBoolean();
+        if(etagEnabled) {
+            final int maxCacheSizeBytes = context.getProperty(PROP_ETAG_MAX_CACHE_SIZE).asDataSize(DataUnit.B).intValue();
+            okHttpClientBuilder.cache(new Cache(getETagCacheDir(), maxCacheSizeBytes));
         }
 
         // Set timeouts
@@ -537,7 +603,7 @@ public final class InvokeHTTP extends AbstractProcessor {
 
         // check if the ssl context is set and add the factory if so
         if (sslContext != null) {
-            setSslSocketFactory(okHttpClientBuilder, sslService, sslContext);
+            setSslSocketFactory(okHttpClientBuilder, sslService, sslContext, isHttpsProxy);
         }
 
         // check the trusted hostname property and override the HostnameVerifier
@@ -561,33 +627,44 @@ public final class InvokeHTTP extends AbstractProcessor {
         In-depth documentation on Java Secure Socket Extension (JSSE) Classes and interfaces:
             https://docs.oracle.com/javase/8/docs/technotes/guides/security/jsse/JSSERefGuide.html#JSSEClasses
      */
-    private void setSslSocketFactory(OkHttpClient.Builder okHttpClientBuilder, SSLContextService sslService, SSLContext sslContext)
+    private void setSslSocketFactory(OkHttpClient.Builder okHttpClientBuilder, SSLContextService sslService, SSLContext sslContext, boolean setAsSocketFactory)
             throws IOException, KeyStoreException, CertificateException, NoSuchAlgorithmException, UnrecoverableKeyException, KeyManagementException {
-        final String keystoreLocation = sslService.getKeyStoreFile();
-        final String keystorePass = sslService.getKeyStorePassword();
-        final String keystoreType = sslService.getKeyStoreType();
-
-        // prepare the keystore
-        final KeyStore keyStore = KeyStore.getInstance(keystoreType);
-
-        try (FileInputStream keyStoreStream = new FileInputStream(keystoreLocation)) {
-            keyStore.load(keyStoreStream, keystorePass.toCharArray());
-        }
 
         final KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-        keyManagerFactory.init(keyStore, keystorePass.toCharArray());
-
-        // load truststore
-        final String truststoreLocation = sslService.getTrustStoreFile();
-        final String truststorePass = sslService.getTrustStorePassword();
-        final String truststoreType = sslService.getTrustStoreType();
-
-        KeyStore truststore = KeyStore.getInstance(truststoreType);
         final TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance("X509");
-        truststore.load(new FileInputStream(truststoreLocation), truststorePass.toCharArray());
-        trustManagerFactory.init(truststore);
+        // initialize the KeyManager array to null and we will overwrite later if a keystore is loaded
+        KeyManager[] keyManagers = null;
 
-        /*
+        // we will only initialize the keystore if properties have been supplied by the SSLContextService
+        if (sslService.isKeyStoreConfigured()) {
+            final String keystoreLocation = sslService.getKeyStoreFile();
+            final String keystorePass = sslService.getKeyStorePassword();
+            final String keystoreType = sslService.getKeyStoreType();
+
+            // prepare the keystore
+            final KeyStore keyStore = KeyStore.getInstance(keystoreType);
+
+            try (FileInputStream keyStoreStream = new FileInputStream(keystoreLocation)) {
+                keyStore.load(keyStoreStream, keystorePass.toCharArray());
+            }
+
+            keyManagerFactory.init(keyStore, keystorePass.toCharArray());
+            keyManagers = keyManagerFactory.getKeyManagers();
+        }
+
+        // we will only initialize the truststure if properties have been supplied by the SSLContextService
+        if (sslService.isTrustStoreConfigured()) {
+            // load truststore
+            final String truststoreLocation = sslService.getTrustStoreFile();
+            final String truststorePass = sslService.getTrustStorePassword();
+            final String truststoreType = sslService.getTrustStoreType();
+
+            KeyStore truststore = KeyStore.getInstance(truststoreType);
+            truststore.load(new FileInputStream(truststoreLocation), truststorePass.toCharArray());
+            trustManagerFactory.init(truststore);
+        }
+
+         /*
             TrustManagerFactory.getTrustManagers returns a trust manager for each type of trust material. Since we are getting a trust manager factory that uses "X509"
             as it's trust management algorithm, we are able to grab the first (and thus the most preferred) and use it as our x509 Trust Manager
 
@@ -601,15 +678,19 @@ public final class InvokeHTTP extends AbstractProcessor {
             throw new IllegalStateException("List of trust managers is null");
         }
 
-        sslContext.init(keyManagerFactory.getKeyManagers(), trustManagerFactory.getTrustManagers(), null);
+        // if keystore properties were not supplied, the keyManagers array will be null
+        sslContext.init(keyManagers, trustManagerFactory.getTrustManagers(), null);
 
         final SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
         okHttpClientBuilder.sslSocketFactory(sslSocketFactory, x509TrustManager);
+        if (setAsSocketFactory) {
+            okHttpClientBuilder.socketFactory(sslSocketFactory);
+        }
     }
 
     private void setAuthenticator(OkHttpClient.Builder okHttpClientBuilder, ProcessContext context) {
         final String authUser = trimToEmpty(context.getProperty(PROP_BASIC_AUTH_USERNAME).getValue());
-        final String proxyUsername = trimToEmpty(context.getProperty(PROP_PROXY_USER).getValue());
+        final String proxyUsername = trimToEmpty(context.getProperty(PROP_PROXY_USER).evaluateAttributeExpressions().getValue());
 
         // If the username/password properties are set then check if digest auth is being used
         if (!authUser.isEmpty() && "true".equalsIgnoreCase(context.getProperty(PROP_DIGEST_AUTH).getValue())) {
@@ -625,7 +706,7 @@ public final class InvokeHTTP extends AbstractProcessor {
             final DigestAuthenticator digestAuthenticator = new DigestAuthenticator(credentials);
 
             if(!proxyUsername.isEmpty()) {
-                final String proxyPassword = context.getProperty(PROP_PROXY_PASSWORD).getValue();
+                final String proxyPassword = context.getProperty(PROP_PROXY_PASSWORD).evaluateAttributeExpressions().getValue();
                 ProxyAuthenticator proxyAuthenticator = new ProxyAuthenticator(proxyUsername, proxyPassword);
 
                 okHttpClientBuilder.proxyAuthenticator(proxyAuthenticator);
@@ -636,7 +717,7 @@ public final class InvokeHTTP extends AbstractProcessor {
         } else {
             // Add proxy authentication only
             if(!proxyUsername.isEmpty()) {
-                final String proxyPassword = context.getProperty(PROP_PROXY_PASSWORD).getValue();
+                final String proxyPassword = context.getProperty(PROP_PROXY_PASSWORD).evaluateAttributeExpressions().getValue();
                 ProxyAuthenticator proxyAuthenticator = new ProxyAuthenticator(proxyUsername, proxyPassword);
 
                 okHttpClientBuilder.proxyAuthenticator(proxyAuthenticator);
@@ -668,6 +749,14 @@ public final class InvokeHTTP extends AbstractProcessor {
         // Setting some initial variables
         final int maxAttributeSize = context.getProperty(PROP_PUT_ATTRIBUTE_MAX_LENGTH).asInteger();
         final ComponentLog logger = getLogger();
+
+        // log ETag cache metrics
+        final boolean eTagEnabled = context.getProperty(PROP_USE_ETAG).asBoolean();
+        if(eTagEnabled && logger.isDebugEnabled()) {
+            final Cache cache = okHttpClient.cache();
+            logger.debug("OkHttp ETag cache metrics :: Request Count: {} | Network Count: {} | Hit Count: {}",
+                    new Object[] {cache.requestCount(), cache.networkCount(), cache.hitCount()});
+        }
 
         // Every request/response cycle has a unique transaction id which will be stored as a flowfile attribute.
         final UUID txId = UUID.randomUUID();
@@ -1091,6 +1180,19 @@ public final class InvokeHTTP extends AbstractProcessor {
 
     private Charset getCharsetFromMediaType(MediaType contentType) {
         return contentType != null ? contentType.charset(StandardCharsets.UTF_8) : StandardCharsets.UTF_8;
+    }
+
+    /**
+     * Retrieve the directory in which OkHttp should cache responses. This method opts
+     * to use a temp directory to write the cache, which means that the cache will be written
+     * to a new location each time this processor is scheduled.
+     *
+     * Ref: https://github.com/square/okhttp/wiki/Recipes#response-caching
+     *
+     * @return the directory in which the ETag cache should be written
+     */
+    private static File getETagCacheDir() {
+        return Files.createTempDir();
     }
 
     private static class OverrideHostnameVerifier implements HostnameVerifier {

@@ -27,6 +27,7 @@
                 'nf.ProcessGroupConfiguration',
                 'nf.CanvasUtils',
                 'nf.ErrorHandler',
+                'nf.FilteredDialogCommon',
                 'nf.Dialog',
                 'nf.Common',
                 'nf.ControllerService',
@@ -35,8 +36,8 @@
                 'nf.ComponentState',
                 'nf.ComponentVersion',
                 'nf.ng.Bridge'],
-            function ($, d3, Slick, nfClient, nfShell, nfProcessGroupConfiguration, nfCanvasUtils, nfErrorHandler, nfDialog, nfCommon, nfControllerService, nfProcessGroup, nfPolicyManagement, nfComponentState, nfComponentVersion, nfNgBridge) {
-                return (nf.ControllerServices = factory($, d3, Slick, nfClient, nfShell, nfProcessGroupConfiguration, nfCanvasUtils, nfErrorHandler, nfDialog, nfCommon, nfControllerService, nfProcessGroup, nfPolicyManagement, nfComponentState, nfComponentVersion, nfNgBridge));
+            function ($, d3, Slick, nfClient, nfShell, nfProcessGroupConfiguration, nfCanvasUtils, nfErrorHandler, nfFilteredDialogCommon, nfDialog, nfCommon, nfControllerService, nfProcessGroup, nfPolicyManagement, nfComponentState, nfComponentVersion, nfNgBridge) {
+                return (nf.ControllerServices = factory($, d3, Slick, nfClient, nfShell, nfProcessGroupConfiguration, nfCanvasUtils, nfErrorHandler, nfFilteredDialogCommon, nfDialog, nfCommon, nfControllerService, nfProcessGroup, nfPolicyManagement, nfComponentState, nfComponentVersion, nfNgBridge));
             });
     } else if (typeof exports === 'object' && typeof module === 'object') {
         module.exports = (nf.ControllerServices =
@@ -48,6 +49,7 @@
                 require('nf.ProcessGroupConfiguration'),
                 require('nf.CanvasUtils'),
                 require('nf.ErrorHandler'),
+                require('nf.FilteredDialogCommon'),
                 require('nf.Dialog'),
                 require('nf.Common'),
                 require('nf.ControllerService'),
@@ -65,6 +67,7 @@
             root.nf.ProcessGroupConfiguration,
             root.nf.CanvasUtils,
             root.nf.ErrorHandler,
+            root.nf.FilteredDialogCommon,
             root.nf.Dialog,
             root.nf.Common,
             root.nf.ControllerService,
@@ -74,7 +77,7 @@
             root.nf.ComponentVersion,
             root.nf.ng.Bridge);
     }
-}(this, function ($, d3, Slick, nfClient, nfShell, nfProcessGroupConfiguration, nfCanvasUtils, nfErrorHandler, nfDialog, nfCommon, nfControllerService, nfProcessGroup, nfPolicyManagement, nfComponentState, nfComponentVersion, nfNgBridge) {
+}(this, function ($, d3, Slick, nfClient, nfShell, nfProcessGroupConfiguration, nfCanvasUtils, nfErrorHandler, nfFilteredDialogCommon, nfDialog, nfCommon, nfControllerService, nfProcessGroup, nfPolicyManagement, nfComponentState, nfComponentVersion, nfNgBridge) {
     'use strict';
 
     var dblClick = null;
@@ -103,7 +106,7 @@
      * @param item controller service type
      */
     var isSelectable = function (item) {
-        return nfCommon.isBlank(item.usageRestriction) || nfCommon.canAccessRestrictedComponents();
+        return item.restricted === false || nfCommon.canAccessComponentRestrictions(item.explicitRestrictions);
     };
 
     /**
@@ -137,7 +140,9 @@
 
             // update the selection if possible
             if (controllerServiceTypesData.getLength() > 0) {
-                controllerServiceTypesGrid.setSelectedRows([0]);
+                nfFilteredDialogCommon.choseFirstRow(controllerServiceTypesGrid);
+                // make the first row visible
+                controllerServiceTypesGrid.scrollRowToTop(0);
             }
         }
     };
@@ -324,7 +329,7 @@
 
             // select the new controller service
             var row = controllerServicesData.getRowById(controllerServiceEntity.id);
-            controllerServicesGrid.setSelectedRows([row]);
+            nfFilteredDialogCommon.choseRow(controllerServicesGrid, row);
             controllerServicesGrid.scrollRowIntoView(row);
         }).fail(nfErrorHandler.handleAjaxError);
 
@@ -457,9 +462,28 @@
                 var item = controllerServiceTypesData.getItemById(rowId);
 
                 // show the tooltip
-                if (nfCommon.isDefinedAndNotNull(item.usageRestriction)) {
+                if (item.restricted === true) {
+                    var restrictionTip = $('<div></div>');
+
+                    if (nfCommon.isBlank(item.usageRestriction)) {
+                        restrictionTip.append($('<p style="margin-bottom: 3px;"></p>').text('Requires the following permissions:'));
+                    } else {
+                        restrictionTip.append($('<p style="margin-bottom: 3px;"></p>').text(item.usageRestriction + ' Requires the following permissions:'));
+                    }
+
+                    var restrictions = [];
+                    if (nfCommon.isDefinedAndNotNull(item.explicitRestrictions)) {
+                        $.each(item.explicitRestrictions, function (_, explicitRestriction) {
+                            var requiredPermission = explicitRestriction.requiredPermission;
+                            restrictions.push("'" + requiredPermission.label + "' - " + nfCommon.escapeHtml(explicitRestriction.explanation));
+                        });
+                    } else {
+                        restrictions.push('Access to restricted components regardless of restrictions.');
+                    }
+                    restrictionTip.append(nfCommon.formatUnorderedList(restrictions));
+
                     usageRestriction.qtip($.extend({}, nfCommon.config.tooltipConfig, {
-                        content: item.usageRestriction,
+                        content: restrictionTip,
                         position: {
                             container: $('#summary'),
                             at: 'bottom right',
@@ -503,6 +527,8 @@
             }
         });
 
+        var generalRestriction = nfCommon.getPolicyTypeListing('restricted-components');
+
         // load the available controller services
         $.ajax({
             type: 'GET',
@@ -512,12 +538,54 @@
             var id = 0;
             var tags = [];
             var groups = d3.set();
+            var restrictedUsage = d3.map();
+            var requiredPermissions = d3.map();
 
             // begin the update
             controllerServiceTypesData.beginUpdate();
 
             // go through each controller service type
             $.each(response.controllerServiceTypes, function (i, documentedType) {
+                if (documentedType.restricted === true) {
+                    if (nfCommon.isDefinedAndNotNull(documentedType.explicitRestrictions)) {
+                        $.each(documentedType.explicitRestrictions, function (_, explicitRestriction) {
+                            var requiredPermission = explicitRestriction.requiredPermission;
+
+                            // update required permissions
+                            if (!requiredPermissions.has(requiredPermission.id)) {
+                                requiredPermissions.set(requiredPermission.id, requiredPermission.label);
+                            }
+
+                            // update component restrictions
+                            if (!restrictedUsage.has(requiredPermission.id)) {
+                                restrictedUsage.set(requiredPermission.id, []);
+                            }
+
+                            restrictedUsage.get(requiredPermission.id).push({
+                                type: nfCommon.formatType(documentedType),
+                                bundle: nfCommon.formatBundle(documentedType.bundle),
+                                explanation: explicitRestriction.explanation
+                            })
+                        });
+                    } else {
+                        // update required permissions
+                        if (!requiredPermissions.has(generalRestriction.value)) {
+                            requiredPermissions.set(generalRestriction.value, generalRestriction.text);
+                        }
+
+                        // update component restrictions
+                        if (!restrictedUsage.has(generalRestriction.value)) {
+                            restrictedUsage.set(generalRestriction.value, []);
+                        }
+
+                        restrictedUsage.get(generalRestriction.value).push({
+                            type: nfCommon.formatType(documentedType),
+                            bundle: nfCommon.formatBundle(documentedType.bundle),
+                            explanation: documentedType.usageRestriction
+                        });
+                    }
+                }
+
                 // record the group
                 groups.add(documentedType.bundle.group);
 
@@ -529,7 +597,9 @@
                     bundle: documentedType.bundle,
                     controllerServiceApis: documentedType.controllerServiceApis,
                     description: nfCommon.escapeHtml(documentedType.description),
+                    restricted:  documentedType.restricted,
                     usageRestriction: nfCommon.escapeHtml(documentedType.usageRestriction),
+                    explicitRestrictions: documentedType.explicitRestrictions,
                     tags: documentedType.tags.join(', ')
                 });
 
@@ -546,6 +616,9 @@
             controllerServiceTypesData.reSort();
             controllerServiceTypesGrid.invalidate();
 
+            // set the component restrictions and the corresponding required permissions
+            nfCanvasUtils.addComponentRestrictions(restrictedUsage, requiredPermissions);
+
             // set the total number of processors
             $('#total-controller-service-types, #displayed-controller-service-types').text(response.controllerServiceTypes.length);
 
@@ -561,7 +634,7 @@
                 text: 'all groups',
                 value: ''
             }];
-            groups.forEach(function (group) {
+            groups.each(function (group) {
                 options.push({
                     text: group,
                     value: group
@@ -839,7 +912,7 @@
         var controllerServiceActionFormatter = function (row, cell, value, columnDef, dataContext) {
             var markup = '';
 
-            if (dataContext.permissions.canRead && dataContext.permissions.canWrite) {
+            if (dataContext.permissions.canRead) {
                 var definedByCurrentGroup = false;
                 if (nfCommon.isDefinedAndNotNull(dataContext.component.parentGroupId)) {
                     // when opened in the process group context, the current group is store in #process-group-id
@@ -852,30 +925,39 @@
                 }
 
                 if (definedByCurrentGroup === true) {
-                    if (dataContext.component.state === 'ENABLED' || dataContext.component.state === 'ENABLING') {
-                        markup += '<div class="pointer view-controller-service fa fa-gear" title="View Configuration" style="margin-top: 2px; margin-right: 3px;" ></div>';
-                        markup += '<div class="pointer disable-controller-service icon icon-enable-false" title="Disable" style="margin-top: 2px; margin-right: 3px;" ></div>';
-                    } else if (dataContext.component.state === 'DISABLED') {
-                        markup += '<div class="pointer edit-controller-service fa fa-gear" title="Configure" style="margin-top: 2px; margin-right: 3px;" ></div>';
+                    if (dataContext.permissions.canWrite) {
+                        // write permission... allow actions based on the current state of the service
+                        if (dataContext.component.state === 'ENABLED' || dataContext.component.state === 'ENABLING') {
+                            markup += '<div class="pointer view-controller-service fa fa-gear" title="View Configuration" style="margin-top: 2px; margin-right: 3px;" ></div>';
+                            markup += '<div class="pointer disable-controller-service icon icon-enable-false" title="Disable" style="margin-top: 2px; margin-right: 3px;" ></div>';
+                        } else if (dataContext.component.state === 'DISABLED') {
+                            markup += '<div class="pointer edit-controller-service fa fa-gear" title="Configure" style="margin-top: 2px; margin-right: 3px;" ></div>';
 
-                        // if there are no validation errors allow enabling
-                        if (nfCommon.isEmpty(dataContext.component.validationErrors)) {
-                            markup += '<div class="pointer enable-controller-service fa fa-flash" title="Enable" style="margin-top: 2px; margin-right: 3px;"></div>';
+                            // if there are no validation errors allow enabling
+                            if (nfCommon.isEmpty(dataContext.component.validationErrors)) {
+                                markup += '<div class="pointer enable-controller-service fa fa-flash" title="Enable" style="margin-top: 2px; margin-right: 3px;"></div>';
+                            }
+
+                            if (dataContext.component.multipleVersionsAvailable === true) {
+                                markup += '<div title="Change Version" class="pointer change-version-controller-service fa fa-exchange" style="margin-top: 2px; margin-right: 3px;" ></div>';
+                            }
+
+                            if (canWriteControllerServiceParent(dataContext)) {
+                                markup += '<div class="pointer delete-controller-service fa fa-trash" title="Remove" style="margin-top: 2px; margin-right: 3px;" ></div>';
+                            }
                         }
 
-                        if (dataContext.component.multipleVersionsAvailable === true) {
-                            markup += '<div title="Change Version" class="pointer change-version-controller-service fa fa-exchange" style="margin-top: 2px; margin-right: 3px;" ></div>';
+                        if (dataContext.component.persistsState === true) {
+                            markup += '<div title="View State" class="pointer view-state-controller-service fa fa-tasks" style="margin-top: 2px; margin-right: 3px;" ></div>';
                         }
-
-                        if (canWriteControllerServiceParent(dataContext)) {
-                            markup += '<div class="pointer delete-controller-service fa fa-trash" title="Remove" style="margin-top: 2px; margin-right: 3px;" ></div>';
+                    } else {
+                        // no write permission... allow viewing configuration if in current group
+                        if (definedByCurrentGroup === true) {
+                            markup += '<div class="pointer view-controller-service fa fa-gear" title="View Configuration" style="margin-top: 2px; margin-right: 3px;" ></div>';
                         }
-                    }
-
-                    if (dataContext.component.persistsState === true) {
-                        markup += '<div title="View State" class="pointer view-state-controller-service fa fa-tasks" style="margin-top: 2px; margin-right: 3px;" ></div>';
                     }
                 } else {
+                    // not defined in current group... show go to arrow
                     markup += '<div class="pointer go-to-controller-service fa fa-long-arrow-right" title="Go To" style="margin-top: 2px; margin-right: 3px;" ></div>';
                 }
             }
@@ -1191,9 +1273,17 @@
             var grid = $('#controller-service-types-table').data('gridInstance');
             var dataview = grid.getData();
 
+            var navigationKeys = [$.ui.keyCode.UP, $.ui.keyCode.PAGE_UP, $.ui.keyCode.DOWN, $.ui.keyCode.PAGE_DOWN];
+
             // update the keyhandler
             $('#controller-service-type-filter').off('keyup').on('keyup', function (e) {
                 var code = e.keyCode ? e.keyCode : e.which;
+
+                // ignore navigation keys
+                if ($.inArray(code, navigationKeys) !== -1) {
+                    return;
+                }
+
                 if (code === $.ui.keyCode.ENTER) {
                     var selected = grid.getSelectedRows();
 
@@ -1208,6 +1298,9 @@
                     applyControllerServiceTypeFilter();
                 }
             });
+
+            // setup row navigation
+            nfFilteredDialogCommon.addKeydownListener('#controller-service-type-filter', grid, dataview);
 
             // update the button model and show the dialog
             $('#new-controller-service-dialog').modal('setButtonModel', [{
@@ -1267,7 +1360,7 @@
 
             // auto select the first row if possible
             if (dataview.getLength() > 0) {
-                grid.setSelectedRows([0]);
+                nfFilteredDialogCommon.choseFirstRow(grid);
             }
 
             // set the initial focus
@@ -1314,7 +1407,7 @@
                     .key(function(d) { return d.sourceId; })
                     .map(controllerServiceBulletins, d3.map);
 
-                controllerServiceBulletinsBySource.forEach(function(sourceId, sourceBulletins) {
+                controllerServiceBulletinsBySource.each(function(sourceBulletins, sourceId) {
                     var controllerService = controllerServicesData.getItemById(sourceId);
                     if (nfCommon.isDefinedAndNotNull(controllerService)) {
                         controllerServicesData.updateItem(sourceId, $.extend(controllerService, {

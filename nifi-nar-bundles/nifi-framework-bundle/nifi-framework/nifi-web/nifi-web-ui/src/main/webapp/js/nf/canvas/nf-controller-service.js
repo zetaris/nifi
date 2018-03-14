@@ -415,7 +415,7 @@
             })
             .map(bulletins, d3.map);
 
-        bulletinsBySource.forEach(function (sourceId, sourceBulletins) {
+        bulletinsBySource.each(function (sourceBulletins, sourceId) {
             $('div.' + sourceId + '-bulletins').each(function () {
                 updateBulletins(sourceBulletins, $(this));
             });
@@ -586,7 +586,7 @@
         });
 
         // query for the bulletins
-        queryBulletins(referencingComponentIds).done(function (response) {
+        nfCanvasUtils.queryBulletins(referencingComponentIds).done(function (response) {
             var bulletins = response.bulletinBoard.bulletins;
             updateReferencingComponentBulletins(bulletins);
         });
@@ -620,25 +620,6 @@
         createReferenceBlock('Reporting Tasks', tasks);
         createReferenceBlock('Controller Services', services);
         createReferenceBlock('Unauthorized', unauthorized);
-    };
-
-    /**
-     * Queries for bulletins for the specified components.
-     *
-     * @param {array} componentIds
-     * @returns {deferred}
-     */
-    var queryBulletins = function (componentIds) {
-        var ids = componentIds.join('|');
-
-        return $.ajax({
-            type: 'GET',
-            url: '../nifi-api/flow/bulletin-board',
-            data: {
-                sourceId: ids
-            },
-            dataType: 'json'
-        }).fail(nfErrorHandler.handleAjaxError);
     };
 
     /**
@@ -688,7 +669,7 @@
                         return service.state === 'DISABLED';
                     }
                 }, function (service) {
-                    return queryBulletins([service.id]);
+                    return nfCanvasUtils.queryBulletins([service.id]);
                 }, pollCondition);
 
                 // once the service has updated, resolve and render the updated service
@@ -808,7 +789,7 @@
 
                     // start polling for each controller service
                     var polling = [];
-                    services.forEach(function (controllerServiceId) {
+                    services.each(function (controllerServiceId) {
                         getControllerService(controllerServiceId, controllerServiceData).done(function(controllerServiceEntity) {
                             polling.push(stopReferencingSchedulableComponents(controllerServiceEntity, pollCondition));
                         });
@@ -883,8 +864,7 @@
                     dataType: 'json'
                 });
 
-                $.when(bulletins, service).done(function (bulletinResult, serviceResult) {
-                    var bulletinResponse = bulletinResult[0];
+                $.when(bulletins, service).done(function (bulletinResponse, serviceResult) {
                     var serviceResponse = serviceResult[0];
                     conditionMet(serviceResponse.component, bulletinResponse.bulletinBoard.bulletins);
                 }).fail(function (xhr, status, error) {
@@ -961,7 +941,7 @@
                 }
             });
 
-            return queryBulletins(referencingSchedulableComponents);
+            return nfCanvasUtils.queryBulletins(referencingSchedulableComponents);
         }, pollCondition);
     };
 
@@ -1006,7 +986,7 @@
                 }
             });
 
-            return queryBulletins(referencingSchedulableComponents);
+            return nfCanvasUtils.queryBulletins(referencingSchedulableComponents);
         }, pollCondition);
     };
 
@@ -1051,7 +1031,7 @@
                 }
             });
 
-            return queryBulletins(referencingSchedulableComponents);
+            return nfCanvasUtils.queryBulletins(referencingSchedulableComponents);
         }, pollCondition);
     };
 
@@ -1100,7 +1080,7 @@
 
                 // start polling for each controller service
                 var polling = [];
-                services.forEach(function (controllerServiceId) {
+                services.each(function (controllerServiceId) {
                     getControllerService(controllerServiceId, controllerServiceData).done(function(controllerServiceEntity) {
                         if (enabled) {
                             polling.push(enableReferencingServices(controllerServiceEntity, pollCondition));
@@ -1164,7 +1144,7 @@
         $('#disable-controller-service-dialog').modal('setButtonModel', buttons).modal('show');
 
         // load the bulletins
-        queryBulletins([controllerService.id]).done(function (response) {
+        nfCanvasUtils.queryBulletins([controllerService.id]).done(function (response) {
             updateBulletins(response.bulletinBoard.bulletins, $('#disable-controller-service-bulletins'));
         });
 
@@ -1216,7 +1196,7 @@
         $('#enable-controller-service-dialog').modal('setButtonModel', buttons).modal('show');
 
         // load the bulletins
-        queryBulletins([controllerService.id]).done(function (response) {
+        nfCanvasUtils.queryBulletins([controllerService.id]).done(function (response) {
             updateBulletins(response.bulletinBoard.bulletins, $('#enable-controller-service-bulletins'));
         });
 

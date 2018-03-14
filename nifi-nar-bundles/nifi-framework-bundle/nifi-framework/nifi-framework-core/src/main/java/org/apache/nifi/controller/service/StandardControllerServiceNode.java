@@ -24,6 +24,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
@@ -62,6 +63,7 @@ import org.apache.nifi.processor.SimpleProcessLogger;
 import org.apache.nifi.registry.ComponentVariableRegistry;
 import org.apache.nifi.util.CharacterFilterUtils;
 import org.apache.nifi.util.ReflectionUtils;
+import org.apache.nifi.util.file.classloader.ClassLoaderUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,6 +74,7 @@ public class StandardControllerServiceNode extends AbstractConfiguredComponent i
     private final AtomicReference<ControllerServiceDetails> controllerServiceHolder = new AtomicReference<>(null);
     private final ControllerServiceProvider serviceProvider;
     private final ServiceStateTransition stateTransition = new ServiceStateTransition();
+    private final AtomicReference<String> versionedComponentId = new AtomicReference<>();
 
     private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
     private final Lock readLock = rwLock.readLock();
@@ -149,6 +152,11 @@ public class StandardControllerServiceNode extends AbstractConfiguredComponent i
     }
 
     @Override
+    public Class<?> getComponentClass() {
+        return getControllerServiceImplementation().getClass();
+    }
+
+    @Override
     public boolean isDeprecated() {
         return getControllerServiceImplementation().getClass().isAnnotationPresent(DeprecationNotice.class);
     }
@@ -188,7 +196,8 @@ public class StandardControllerServiceNode extends AbstractConfiguredComponent i
             if (isActive()) {
                 throw new IllegalStateException("Cannot reload Controller Service while service is active");
             }
-
+            String additionalResourcesFingerprint = ClassLoaderUtils.generateAdditionalUrlsFingerprint(additionalUrls);
+            setAdditionalResourcesFingerprint(additionalResourcesFingerprint);
             getReloadComponent().reload(this, getCanonicalClassName(), getBundleCoordinate(), additionalUrls);
         }
     }
@@ -399,6 +408,7 @@ public class StandardControllerServiceNode extends AbstractConfiguredComponent i
                 this.active.set(true);
             }
 
+            final StandardControllerServiceNode service = this;
             final ConfigurationContext configContext = new StandardConfigurationContext(this, this.serviceProvider, null, getVariableRegistry());
             scheduler.execute(new Runnable() {
                 @Override
@@ -408,17 +418,19 @@ public class StandardControllerServiceNode extends AbstractConfiguredComponent i
                             ReflectionUtils.invokeMethodsWithAnnotation(OnEnabled.class, getControllerServiceImplementation(), configContext);
                         }
 
-                        boolean shouldEnable = false;
+                        boolean shouldEnable;
                         synchronized (active) {
                             shouldEnable = active.get() && stateTransition.enable();
                         }
 
                         if (!shouldEnable) {
-                            LOG.debug("Disabling service " + this + " after it has been enabled due to disable action being initiated.");
+                            LOG.debug("Disabling service {} after it has been enabled due to disable action being initiated.", service);
                             // Can only happen if user initiated DISABLE operation before service finished enabling. It's state will be
                             // set to DISABLING (see disable() operation)
                             invokeDisable(configContext);
                             stateTransition.disable();
+                        } else {
+                            LOG.debug("Successfully enabled {}", service);
                         }
                     } catch (Exception e) {
                         future.completeExceptionally(e);
@@ -499,6 +511,7 @@ public class StandardControllerServiceNode extends AbstractConfiguredComponent i
     private void invokeDisable(ConfigurationContext configContext) {
         try (final NarCloseable nc = NarCloseable.withComponentNarLoader(getControllerServiceImplementation().getClass(), getIdentifier())) {
             ReflectionUtils.invokeMethodsWithAnnotation(OnDisabled.class, StandardControllerServiceNode.this.getControllerServiceImplementation(), configContext);
+            LOG.debug("Successfully disabled {}", this);
         } catch (Exception e) {
             final Throwable cause = e instanceof InvocationTargetException ? e.getCause() : e;
             final ComponentLog componentLog = new SimpleProcessLogger(getIdentifier(), StandardControllerServiceNode.this);
@@ -522,4 +535,26 @@ public class StandardControllerServiceNode extends AbstractConfiguredComponent i
         return results != null ? results : Collections.emptySet();
     }
 
+    @Override
+    public Optional<String> getVersionedComponentId() {
+        return Optional.ofNullable(versionedComponentId.get());
+    }
+
+    @Override
+    public void setVersionedComponentId(final String versionedComponentId) {
+        boolean updated = false;
+        while (!updated) {
+            final String currentId = this.versionedComponentId.get();
+
+            if (currentId == null) {
+                updated = this.versionedComponentId.compareAndSet(null, versionedComponentId);
+            } else if (currentId.equals(versionedComponentId)) {
+                return;
+            } else if (versionedComponentId == null) {
+                updated = this.versionedComponentId.compareAndSet(currentId, null);
+            } else {
+                throw new IllegalStateException(this + " is already under version control");
+            }
+        }
+    }
 }

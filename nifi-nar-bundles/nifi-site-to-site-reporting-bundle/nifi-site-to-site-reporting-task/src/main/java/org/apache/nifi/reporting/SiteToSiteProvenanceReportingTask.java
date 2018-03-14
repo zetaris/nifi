@@ -19,6 +19,7 @@ package org.apache.nifi.reporting;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.annotation.behavior.Restricted;
+import org.apache.nifi.annotation.behavior.Restriction;
 import org.apache.nifi.annotation.behavior.Stateful;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
@@ -26,19 +27,17 @@ import org.apache.nifi.annotation.lifecycle.OnScheduled;
 import org.apache.nifi.annotation.lifecycle.OnUnscheduled;
 import org.apache.nifi.components.AllowableValue;
 import org.apache.nifi.components.PropertyDescriptor;
+import org.apache.nifi.components.RequiredPermission;
 import org.apache.nifi.components.state.Scope;
-import org.apache.nifi.components.state.StateManager;
 import org.apache.nifi.controller.ConfigurationContext;
-import org.apache.nifi.controller.status.PortStatus;
 import org.apache.nifi.controller.status.ProcessGroupStatus;
-import org.apache.nifi.controller.status.ProcessorStatus;
-import org.apache.nifi.controller.status.RemoteProcessGroupStatus;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.provenance.ProvenanceEventRecord;
 import org.apache.nifi.provenance.ProvenanceEventType;
 import org.apache.nifi.remote.Transaction;
 import org.apache.nifi.remote.TransferDirection;
+import org.apache.nifi.reporting.util.provenance.ProvenanceEventConsumer;
 
 import javax.json.Json;
 import javax.json.JsonArray;
@@ -46,6 +45,7 @@ import javax.json.JsonArrayBuilder;
 import javax.json.JsonBuilderFactory;
 import javax.json.JsonObject;
 import javax.json.JsonObjectBuilder;
+import javax.json.JsonValue;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -62,12 +62,17 @@ import java.util.Map;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 
 @Tags({"provenance", "lineage", "tracking", "site", "site to site", "restricted"})
 @CapabilityDescription("Publishes Provenance events using the Site To Site protocol.")
 @Stateful(scopes = Scope.LOCAL, description = "Stores the Reporting Task's last event Id so that on restart the task knows where it left off.")
-@Restricted("Provides operator the ability send sensitive details contained in Provenance events to any external system.")
+@Restricted(
+        restrictions = {
+                @Restriction(
+                        requiredPermission = RequiredPermission.EXPORT_NIFI_DETAILS,
+                        explanation = "Provides operator the ability to send sensitive details contained in Provenance events to any external system.")
+        }
+)
 public class SiteToSiteProvenanceReportingTask extends AbstractSiteToSiteReportingTask {
 
     static final String TIMESTAMP_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'";
@@ -90,7 +95,7 @@ public class SiteToSiteProvenanceReportingTask extends AbstractSiteToSiteReporti
 
     static final PropertyDescriptor FILTER_EVENT_TYPE = new PropertyDescriptor.Builder()
         .name("s2s-prov-task-event-filter")
-        .displayName("Event Type")
+        .displayName("Event Type to Include")
         .description("Comma-separated list of event types that will be used to filter the provenance events sent by the reporting task. "
                 + "Available event types are " + Arrays.deepToString(ProvenanceEventType.values()) + ". If no filter is set, all the events are sent. If "
                         + "multiple filters are set, the filters are cumulative.")
@@ -98,23 +103,54 @@ public class SiteToSiteProvenanceReportingTask extends AbstractSiteToSiteReporti
         .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
         .build();
 
+    static final PropertyDescriptor FILTER_EVENT_TYPE_EXCLUDE = new PropertyDescriptor.Builder()
+            .name("s2s-prov-task-event-filter-exclude")
+            .displayName("Event Type to Exclude")
+            .description("Comma-separated list of event types that will be used to exclude the provenance events sent by the reporting task. "
+                    + "Available event types are " + Arrays.deepToString(ProvenanceEventType.values()) + ". If no filter is set, all the events are sent. If "
+                    + "multiple filters are set, the filters are cumulative. If an event type is included in Event Type to Include and excluded here, then the "
+                    + "exclusion takes precedence and the event will not be sent.")
+            .required(false)
+            .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+            .build();
+
     static final PropertyDescriptor FILTER_COMPONENT_TYPE = new PropertyDescriptor.Builder()
         .name("s2s-prov-task-type-filter")
-        .displayName("Component Type")
+        .displayName("Component Type to Include")
         .description("Regular expression to filter the provenance events based on the component type. Only the events matching the regular "
                 + "expression will be sent. If no filter is set, all the events are sent. If multiple filters are set, the filters are cumulative.")
         .required(false)
         .addValidator(StandardValidators.REGULAR_EXPRESSION_VALIDATOR)
         .build();
 
+    static final PropertyDescriptor FILTER_COMPONENT_TYPE_EXCLUDE = new PropertyDescriptor.Builder()
+            .name("s2s-prov-task-type-filter-exclude")
+            .displayName("Component Type to Exclude")
+            .description("Regular expression to exclude the provenance events based on the component type. The events matching the regular "
+                    + "expression will not be sent. If no filter is set, all the events are sent. If multiple filters are set, the filters are cumulative. "
+                    + "If a component type is included in Component Type to Include and excluded here, then the exclusion takes precedence and the event will not be sent.")
+            .required(false)
+            .addValidator(StandardValidators.REGULAR_EXPRESSION_VALIDATOR)
+            .build();
+
     static final PropertyDescriptor FILTER_COMPONENT_ID = new PropertyDescriptor.Builder()
         .name("s2s-prov-task-id-filter")
-        .displayName("Component ID")
+        .displayName("Component ID to Include")
         .description("Comma-separated list of component UUID that will be used to filter the provenance events sent by the reporting task. If no "
                 + "filter is set, all the events are sent. If multiple filters are set, the filters are cumulative.")
         .required(false)
         .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
         .build();
+
+    static final PropertyDescriptor FILTER_COMPONENT_ID_EXCLUDE = new PropertyDescriptor.Builder()
+            .name("s2s-prov-task-id-filter-exclude")
+            .displayName("Component ID to Exclude")
+            .description("Comma-separated list of component UUID that will be used to exclude the provenance events sent by the reporting task. If no "
+                    + "filter is set, all the events are sent. If multiple filters are set, the filters are cumulative. If a component UUID is included in "
+                    + "Component ID to Include and excluded here, then the exclusion takes precedence and the event will not be sent.")
+            .required(false)
+            .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+            .build();
 
     static final PropertyDescriptor START_POSITION = new PropertyDescriptor.Builder()
         .name("start-position")
@@ -125,52 +161,60 @@ public class SiteToSiteProvenanceReportingTask extends AbstractSiteToSiteReporti
         .required(true)
         .build();
 
-    private volatile long firstEventId = -1L;
-    private volatile boolean isFilteringEnabled = false;
-    private volatile Pattern componentTypeRegex;
-    private volatile List<ProvenanceEventType> eventTypes = new ArrayList<ProvenanceEventType>();
-    private volatile List<String> componentIds = new ArrayList<String>();
-    private volatile boolean scheduled = false;
+    private volatile ProvenanceEventConsumer consumer;
 
     @OnScheduled
     public void onScheduled(final ConfigurationContext context) throws IOException {
-        // initialize component type filtering
-        componentTypeRegex = StringUtils.isBlank(context.getProperty(FILTER_COMPONENT_TYPE).getValue()) ? null : Pattern.compile(context.getProperty(FILTER_COMPONENT_TYPE).getValue());
+        consumer = new ProvenanceEventConsumer();
+        consumer.setStartPositionValue(context.getProperty(START_POSITION).getValue());
+        consumer.setBatchSize(context.getProperty(BATCH_SIZE).asInteger());
+        consumer.setLogger(getLogger());
 
-        final String[] eventList = StringUtils.stripAll(StringUtils.split(context.getProperty(FILTER_EVENT_TYPE).getValue(), ','));
-        if(eventList != null) {
-            for(String type : eventList) {
+        // initialize component type filtering
+        consumer.setComponentTypeRegex(context.getProperty(FILTER_COMPONENT_TYPE).getValue());
+        consumer.setComponentTypeRegexExclude(context.getProperty(FILTER_COMPONENT_TYPE_EXCLUDE).getValue());
+
+        final String[] targetEventTypes = StringUtils.stripAll(StringUtils.split(context.getProperty(FILTER_EVENT_TYPE).getValue(), ','));
+        if(targetEventTypes != null) {
+            for(String type : targetEventTypes) {
                 try {
-                    eventTypes.add(ProvenanceEventType.valueOf(type));
+                    consumer.addTargetEventType(ProvenanceEventType.valueOf(type));
                 } catch (Exception e) {
                     getLogger().warn(type + " is not a correct event type, removed from the filtering.");
                 }
             }
-        } else {
-            eventTypes.clear();
+        }
+
+        final String[] targetEventTypesExclude = StringUtils.stripAll(StringUtils.split(context.getProperty(FILTER_EVENT_TYPE_EXCLUDE).getValue(), ','));
+        if(targetEventTypesExclude != null) {
+            for(String type : targetEventTypesExclude) {
+                try {
+                    consumer.addTargetEventTypeExclude(ProvenanceEventType.valueOf(type));
+                } catch (Exception e) {
+                    getLogger().warn(type + " is not a correct event type, removed from the exclude filtering.");
+                }
+            }
         }
 
         // initialize component ID filtering
-        final String[] componentIdList = StringUtils.stripAll(StringUtils.split(context.getProperty(FILTER_COMPONENT_ID).getValue(), ','));
-        if(componentIdList != null) {
-            componentIds.addAll(Arrays.asList(componentIdList));
-        } else {
-            componentIds.clear();
+        final String[] targetComponentIds = StringUtils.stripAll(StringUtils.split(context.getProperty(FILTER_COMPONENT_ID).getValue(), ','));
+        if(targetComponentIds != null) {
+            consumer.addTargetComponentId(targetComponentIds);
         }
 
-        // set a boolean whether filtering will be applied or not
-        isFilteringEnabled = componentTypeRegex != null || !eventTypes.isEmpty() || !componentIds.isEmpty();
+        final String[] targetComponentIdsExclude = StringUtils.stripAll(StringUtils.split(context.getProperty(FILTER_COMPONENT_ID_EXCLUDE).getValue(), ','));
+        if(targetComponentIdsExclude != null) {
+            consumer.addTargetComponentIdExclude(targetComponentIdsExclude);
+        }
 
-        scheduled = true;
+        consumer.setScheduled(true);
     }
 
     @OnUnscheduled
     public void onUnscheduled() {
-        scheduled = false;
-    }
-
-    public boolean isScheduled() {
-        return scheduled;
+        if (consumer != null) {
+            consumer.setScheduled(false);
+        }
     }
 
     @Override
@@ -178,40 +222,13 @@ public class SiteToSiteProvenanceReportingTask extends AbstractSiteToSiteReporti
         final List<PropertyDescriptor> properties = new ArrayList<>(super.getSupportedPropertyDescriptors());
         properties.add(PLATFORM);
         properties.add(FILTER_EVENT_TYPE);
+        properties.add(FILTER_EVENT_TYPE_EXCLUDE);
         properties.add(FILTER_COMPONENT_TYPE);
+        properties.add(FILTER_COMPONENT_TYPE_EXCLUDE);
         properties.add(FILTER_COMPONENT_ID);
+        properties.add(FILTER_COMPONENT_ID_EXCLUDE);
         properties.add(START_POSITION);
         return properties;
-    }
-
-    private Map<String,String> createComponentMap(final ProcessGroupStatus status) {
-        final Map<String,String> componentMap = new HashMap<>();
-
-        if (status != null) {
-            componentMap.put(status.getId(), status.getName());
-
-            for (final ProcessorStatus procStatus : status.getProcessorStatus()) {
-                componentMap.put(procStatus.getId(), procStatus.getName());
-            }
-
-            for (final PortStatus portStatus : status.getInputPortStatus()) {
-                componentMap.put(portStatus.getId(), portStatus.getName());
-            }
-
-            for (final PortStatus portStatus : status.getOutputPortStatus()) {
-                componentMap.put(portStatus.getId(), portStatus.getName());
-            }
-
-            for (final RemoteProcessGroupStatus rpgStatus : status.getRemoteProcessGroupStatus()) {
-                componentMap.put(rpgStatus.getId(), rpgStatus.getName());
-            }
-
-            for (final ProcessGroupStatus childGroup : status.getProcessGroupStatus()) {
-                componentMap.put(childGroup.getId(), childGroup.getName());
-            }
-        }
-
-        return componentMap;
     }
 
     @Override
@@ -226,65 +243,6 @@ public class SiteToSiteProvenanceReportingTask extends AbstractSiteToSiteReporti
 
         final ProcessGroupStatus procGroupStatus = context.getEventAccess().getControllerStatus();
         final String rootGroupName = procGroupStatus == null ? null : procGroupStatus.getName();
-        final Map<String,String> componentMap = createComponentMap(procGroupStatus);
-
-        Long currMaxId = context.getEventAccess().getProvenanceRepository().getMaxEventId();
-
-        if(currMaxId == null) {
-            getLogger().debug("No events to send because no events have been created yet.");
-            return;
-        }
-
-        if (firstEventId < 0) {
-            Map<String, String> state;
-            try {
-                state = context.getStateManager().getState(Scope.LOCAL).toMap();
-            } catch (IOException e) {
-                getLogger().error("Failed to get state at start up due to:" + e.getMessage(), e);
-                return;
-            }
-
-            final String startPositionValue = context.getProperty(START_POSITION).getValue();
-
-            if (state.containsKey(LAST_EVENT_ID_KEY)) {
-                firstEventId = Long.parseLong(state.get(LAST_EVENT_ID_KEY)) + 1;
-            } else {
-                if (END_OF_STREAM.getValue().equals(startPositionValue)) {
-                    firstEventId = currMaxId;
-                }
-            }
-
-            if (currMaxId < (firstEventId - 1)) {
-                if (BEGINNING_OF_STREAM.getValue().equals(startPositionValue)) {
-                    getLogger().warn("Current provenance max id is {} which is less than what was stored in state as the last queried event, which was {}. This means the provenance restarted its " +
-                        "ids. Restarting querying from the beginning.", new Object[]{currMaxId, firstEventId});
-                    firstEventId = -1;
-                } else {
-                    getLogger().warn("Current provenance max id is {} which is less than what was stored in state as the last queried event, which was {}. This means the provenance restarted its " +
-                        "ids. Restarting querying from the latest event in the Provenance Repository.", new Object[] {currMaxId, firstEventId});
-                    firstEventId = currMaxId;
-                }
-            }
-        }
-
-        if (currMaxId == (firstEventId - 1)) {
-            getLogger().debug("No events to send due to the current max id being equal to the last id that was queried.");
-            return;
-        }
-
-        List<ProvenanceEventRecord> events;
-        try {
-            events = filterEvents(context.getEventAccess().getProvenanceEvents(firstEventId, context.getProperty(BATCH_SIZE).asInteger()));
-        } catch (final IOException ioe) {
-            getLogger().error("Failed to retrieve Provenance Events from repository due to: " + ioe.getMessage(), ioe);
-            return;
-        }
-
-        if (events == null || events.isEmpty()) {
-            getLogger().debug("No events to send due to 'events' being null or empty.");
-            return;
-        }
-
         final String nifiUrl = context.getProperty(INSTANCE_URL).evaluateAttributeExpressions().getValue();
         URL url;
         try {
@@ -304,14 +262,15 @@ public class SiteToSiteProvenanceReportingTask extends AbstractSiteToSiteReporti
         final DateFormat df = new SimpleDateFormat(TIMESTAMP_FORMAT);
         df.setTimeZone(TimeZone.getTimeZone("Z"));
 
-        while (events != null && !events.isEmpty() && isScheduled()) {
+        consumer.consumeEvents(context, (mapHolder, events) -> {
             final long start = System.nanoTime();
-
             // Create a JSON array of all the events in the current batch
             final JsonArrayBuilder arrayBuilder = factory.createArrayBuilder();
             for (final ProvenanceEventRecord event : events) {
-                final String componentName = componentMap.get(event.getComponentId());
-                arrayBuilder.add(serialize(factory, builder, event, df, componentName, hostname, url, rootGroupName, platform, nodeId));
+                final String componentName = mapHolder.getComponentName(event.getComponentId());
+                final String processGroupId = mapHolder.getProcessGroupId(event.getComponentId(), event.getComponentType());
+                final String processGroupName = mapHolder.getComponentName(processGroupId);
+                arrayBuilder.add(serialize(factory, builder, event, df, componentName, processGroupId, processGroupName, hostname, url, rootGroupName, platform, nodeId));
             }
             final JsonArray jsonArray = arrayBuilder.build();
 
@@ -319,13 +278,16 @@ public class SiteToSiteProvenanceReportingTask extends AbstractSiteToSiteReporti
             try {
                 final Transaction transaction = getClient().createTransaction(TransferDirection.SEND);
                 if (transaction == null) {
-                    getLogger().debug("All destination nodes are penalized; will attempt to send data later");
-                    return;
+                    // Throw an exception to avoid provenance event id will not proceed so that those can be consumed again.
+                    throw new ProcessException("All destination nodes are penalized; will attempt to send data later");
                 }
 
                 final Map<String, String> attributes = new HashMap<>();
                 final String transactionId = UUID.randomUUID().toString();
                 attributes.put("reporting.task.transaction.id", transactionId);
+                attributes.put("reporting.task.name", getName());
+                attributes.put("reporting.task.uuid", getIdentifier());
+                attributes.put("reporting.task.type", this.getClass().getSimpleName());
                 attributes.put("mime.type", "application/json");
 
                 final byte[] data = jsonArray.toString().getBytes(StandardCharsets.UTF_8);
@@ -335,62 +297,18 @@ public class SiteToSiteProvenanceReportingTask extends AbstractSiteToSiteReporti
 
                 final long transferMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
                 getLogger().info("Successfully sent {} Provenance Events to destination in {} ms; Transaction ID = {}; First Event ID = {}",
-                        new Object[]{events.size(), transferMillis, transactionId, events.get(0).getEventId()});
+                        new Object[] {events.size(), transferMillis, transactionId, events.get(0).getEventId()});
             } catch (final IOException e) {
                 throw new ProcessException("Failed to send Provenance Events to destination due to IOException:" + e.getMessage(), e);
             }
-
-            // Store the id of the last event so we know where we left off
-            final ProvenanceEventRecord lastEvent = events.get(events.size() - 1);
-            final String lastEventId = String.valueOf(lastEvent.getEventId());
-            try {
-                StateManager stateManager = context.getStateManager();
-                Map<String, String> newMapOfState = new HashMap<>();
-                newMapOfState.put(LAST_EVENT_ID_KEY, lastEventId);
-                stateManager.setState(newMapOfState, Scope.LOCAL);
-            } catch (final IOException ioe) {
-                getLogger().error("Failed to update state to {} due to {}; this could result in events being re-sent after a restart. The message of {} was: {}",
-                        new Object[]{lastEventId, ioe, ioe, ioe.getMessage()}, ioe);
-            }
-
-            firstEventId = lastEvent.getEventId() + 1;
-
-            // Retrieve the next batch
-            try {
-                events = filterEvents(context.getEventAccess().getProvenanceEvents(firstEventId, context.getProperty(BATCH_SIZE).asInteger()));
-            } catch (final IOException ioe) {
-                getLogger().error("Failed to retrieve Provenance Events from repository due to: " + ioe.getMessage(), ioe);
-                return;
-            }
-        }
+        });
 
     }
 
-    private List<ProvenanceEventRecord> filterEvents(List<ProvenanceEventRecord> provenanceEvents) {
-        if(isFilteringEnabled) {
-            List<ProvenanceEventRecord> filteredEvents = new ArrayList<ProvenanceEventRecord>();
-
-            for (ProvenanceEventRecord provenanceEventRecord : provenanceEvents) {
-                if(!componentIds.isEmpty() && !componentIds.contains(provenanceEventRecord.getComponentId())) {
-                    continue;
-                }
-                if(!eventTypes.isEmpty() && !eventTypes.contains(provenanceEventRecord.getEventType())) {
-                    continue;
-                }
-                if(componentTypeRegex != null && !componentTypeRegex.matcher(provenanceEventRecord.getComponentType()).matches()) {
-                    continue;
-                }
-                filteredEvents.add(provenanceEventRecord);
-            }
-
-            return filteredEvents;
-        } else {
-            return provenanceEvents;
-        }
-    }
 
     static JsonObject serialize(final JsonBuilderFactory factory, final JsonObjectBuilder builder, final ProvenanceEventRecord event, final DateFormat df,
-        final String componentName, final String hostname, final URL nifiUrl, final String applicationName, final String platform, final String nodeIdentifier) {
+                                final String componentName, final String processGroupId, final String processGroupName, final String hostname, final URL nifiUrl, final String applicationName,
+                                final String platform, final String nodeIdentifier) {
         addField(builder, "eventId", UUID.randomUUID().toString());
         addField(builder, "eventOrdinal", event.getEventId());
         addField(builder, "eventType", event.getEventType().name());
@@ -402,6 +320,8 @@ public class SiteToSiteProvenanceReportingTask extends AbstractSiteToSiteReporti
         addField(builder, "componentId", event.getComponentId());
         addField(builder, "componentType", event.getComponentType());
         addField(builder, "componentName", componentName);
+        addField(builder, "processGroupId", processGroupId, true);
+        addField(builder, "processGroupName", processGroupName, true);
         addField(builder, "entityId", event.getFlowFileUuid());
         addField(builder, "entityType", "org.apache.nifi.flowfile.FlowFile");
         addField(builder, "entitySize", event.getFileSize());
@@ -465,11 +385,17 @@ public class SiteToSiteProvenanceReportingTask extends AbstractSiteToSiteReporti
     }
 
     private static void addField(final JsonObjectBuilder builder, final String key, final String value) {
-        if (value == null) {
-            return;
-        }
+        addField(builder, key, value, false);
+    }
 
-        builder.add(key, value);
+    private static void addField(final JsonObjectBuilder builder, final String key, final String value, final boolean allowNullValues) {
+        if (value == null) {
+            if (allowNullValues) {
+                builder.add(key, JsonValue.NULL);
+            }
+        } else {
+            builder.add(key, value);
+        }
     }
 
     private static JsonArrayBuilder createJsonArray(JsonBuilderFactory factory, final Collection<String> values) {
@@ -481,5 +407,4 @@ public class SiteToSiteProvenanceReportingTask extends AbstractSiteToSiteReporti
         }
         return builder;
     }
-
 }

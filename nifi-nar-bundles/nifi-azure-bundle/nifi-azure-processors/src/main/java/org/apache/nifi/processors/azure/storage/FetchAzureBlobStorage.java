@@ -18,10 +18,7 @@ package org.apache.nifi.processors.azure.storage;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -34,15 +31,13 @@ import org.apache.nifi.annotation.behavior.WritesAttributes;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.SeeAlso;
 import org.apache.nifi.annotation.documentation.Tags;
-import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processors.azure.AbstractAzureBlobProcessor;
-import org.apache.nifi.processors.azure.AzureConstants;
+import org.apache.nifi.processors.azure.storage.utils.AzureStorageUtils;
 
-import com.microsoft.azure.storage.CloudStorageAccount;
 import com.microsoft.azure.storage.StorageException;
 import com.microsoft.azure.storage.blob.CloudBlob;
 import com.microsoft.azure.storage.blob.CloudBlobClient;
@@ -50,20 +45,12 @@ import com.microsoft.azure.storage.blob.CloudBlobContainer;
 
 @Tags({ "azure", "microsoft", "cloud", "storage", "blob" })
 @CapabilityDescription("Retrieves contents of an Azure Storage Blob, writing the contents to the content of the FlowFile")
-@SeeAlso({ ListAzureBlobStorage.class, PutAzureBlobStorage.class })
+@SeeAlso({ ListAzureBlobStorage.class, PutAzureBlobStorage.class, DeleteAzureBlobStorage.class })
 @InputRequirement(Requirement.INPUT_REQUIRED)
 @WritesAttributes({
     @WritesAttribute(attribute = "azure.length", description = "The length of the blob fetched")
 })
 public class FetchAzureBlobStorage extends AbstractAzureBlobProcessor {
-
-    private static final List<PropertyDescriptor> PROPERTIES = Collections
-            .unmodifiableList(Arrays.asList(AzureConstants.ACCOUNT_NAME, AzureConstants.ACCOUNT_KEY, AzureConstants.CONTAINER, BLOB));
-
-    @Override
-    protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return PROPERTIES;
-    }
 
     @Override
     public void onTrigger(ProcessContext context, ProcessSession session) throws ProcessException {
@@ -74,13 +61,12 @@ public class FetchAzureBlobStorage extends AbstractAzureBlobProcessor {
 
         final long startNanos = System.nanoTime();
 
-        String containerName = context.getProperty(AzureConstants.CONTAINER).evaluateAttributeExpressions(flowFile).getValue();
+        String containerName = context.getProperty(AzureStorageUtils.CONTAINER).evaluateAttributeExpressions(flowFile).getValue();
         String blobPath = context.getProperty(BLOB).evaluateAttributeExpressions(flowFile).getValue();
 
         AtomicReference<Exception> storedException = new AtomicReference<>();
         try {
-            CloudStorageAccount storageAccount = createStorageConnection(context, flowFile);
-            CloudBlobClient blobClient = storageAccount.createCloudBlobClient();
+            CloudBlobClient blobClient = AzureStorageUtils.createCloudBlobClient(context, getLogger(), flowFile);
             CloudBlobContainer container = blobClient.getContainerReference(containerName);
 
             final Map<String, String> attributes = new HashMap<>();

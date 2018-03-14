@@ -66,7 +66,6 @@ g.component rect.body.unauthorized {
     fill: #f4f6f7;
 }
 
-
 g.component rect.border {
     stroke: rgba(0,0,0,0.25);
     stroke-width: 1;
@@ -137,6 +136,11 @@ text.active-thread-count {
     font-weight: bold;
 }
 
+path.component-comments {
+    fill: #000;
+    stroke: #000;
+}
+
 /*
     Selection
 */
@@ -146,7 +150,7 @@ g.component.connectable-destination rect.border {
     stroke-width: 3;
 }
 
-rect.selection, rect.drag-selection, rect.label-drag {
+rect.component-selection, rect.drag-selection, rect.label-drag {
     stroke: #444444;
     stroke-opacity: 0.5;
     fill: transparent;
@@ -187,7 +191,7 @@ text.processor-icon {
     font-size: 30px;
 }
 
-circle.restricted-background {
+circle.restricted-background, circle.is-primary-background {
     visibility: hidden;
     fill: rgba(255, 255, 255, 0.90);
 }
@@ -197,6 +201,12 @@ text.restricted {
     font-family: FontAwesome;
     font-size: 12px;
     fill: #ba554a;
+}
+
+text.is-primary {
+    visibility: hidden;
+    font-size: 12px;
+    font-weight: bold;
 }
 
 text.run-status-icon {
@@ -417,6 +427,13 @@ text.process-group-name {
     font-size: 14px;
 }
 
+text.version-control {
+    font-family: FontAwesome;
+    font-size: 18px;
+    text-shadow: 0 0 4px rgba(255,255,255,1);
+    visibility: hidden;
+}
+
 text.process-group-contents-count {
     fill: #775351;
     font-size: 15px;
@@ -459,5 +476,4 @@ text.remote-process-group-transmission-secure {
 
 text.remote-process-group-last-refresh {
     fill: #728e9b;
-    text-anchor: end;
 }

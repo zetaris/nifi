@@ -48,7 +48,6 @@ import org.apache.nifi.controller.AbstractControllerService;
 import org.apache.nifi.controller.ConfigurationContext;
 import org.apache.nifi.controller.ControllerServiceInitializationContext;
 import org.apache.nifi.hadoop.KerberosProperties;
-import org.apache.nifi.hadoop.KerberosTicketRenewer;
 import org.apache.nifi.hadoop.SecurityUtil;
 import org.apache.nifi.hbase.put.PutColumn;
 import org.apache.nifi.hbase.put.PutFlowFile;
@@ -57,6 +56,8 @@ import org.apache.nifi.hbase.scan.ResultCell;
 import org.apache.nifi.hbase.scan.ResultHandler;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.reporting.InitializationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -81,16 +82,16 @@ import java.util.concurrent.atomic.AtomicReference;
         description="These properties will be set on the HBase configuration after loading any provided configuration files.")
 public class HBase_1_1_2_ClientService extends AbstractControllerService implements HBaseClientService {
 
+    private static final Logger logger = LoggerFactory.getLogger(HBase_1_1_2_ClientService.class);
+
     static final String HBASE_CONF_ZK_QUORUM = "hbase.zookeeper.quorum";
     static final String HBASE_CONF_ZK_PORT = "hbase.zookeeper.property.clientPort";
     static final String HBASE_CONF_ZNODE_PARENT = "zookeeper.znode.parent";
     static final String HBASE_CONF_CLIENT_RETRIES = "hbase.client.retries.number";
 
-    static final long TICKET_RENEWAL_PERIOD = 60000;
-
     private volatile Connection connection;
     private volatile UserGroupInformation ugi;
-    private volatile KerberosTicketRenewer renewer;
+    private volatile String masterAddress;
 
     private List<PropertyDescriptor> properties;
     private KerberosProperties kerberosProperties;
@@ -98,6 +99,10 @@ public class HBase_1_1_2_ClientService extends AbstractControllerService impleme
 
     // Holder of cached Configuration information so validation does not reload the same config over and over
     private final AtomicReference<ValidationResources> validationResourceHolder = new AtomicReference<>();
+
+    protected Connection getConnection() {
+        return connection;
+    }
 
     @Override
     protected void init(ControllerServiceInitializationContext config) throws InitializationException {
@@ -113,7 +118,12 @@ public class HBase_1_1_2_ClientService extends AbstractControllerService impleme
         props.add(ZOOKEEPER_ZNODE_PARENT);
         props.add(HBASE_CLIENT_RETRIES);
         props.add(PHOENIX_CLIENT_JAR_LOCATION);
+        props.addAll(getAdditionalProperties());
         this.properties = Collections.unmodifiableList(props);
+    }
+
+    protected List<PropertyDescriptor> getAdditionalProperties() {
+        return new ArrayList<>();
     }
 
     protected KerberosProperties getKerberosProperties(File kerberosConfigFile) {
@@ -177,6 +187,23 @@ public class HBase_1_1_2_ClientService extends AbstractControllerService impleme
         return problems;
     }
 
+    /**
+     * As of Apache NiFi 1.5.0, due to changes made to
+     * {@link SecurityUtil#loginKerberos(Configuration, String, String)}, which is used by this
+     * class to authenticate a principal with Kerberos, HBase controller services no longer
+     * attempt relogins explicitly.  For more information, please read the documentation for
+     * {@link SecurityUtil#loginKerberos(Configuration, String, String)}.
+     * <p/>
+     * In previous versions of NiFi, a {@link org.apache.nifi.hadoop.KerberosTicketRenewer} was started
+     * when the HBase controller service was enabled.  The use of a separate thread to explicitly relogin could cause
+     * race conditions with the implicit relogin attempts made by hadoop/HBase code on a thread that references the same
+     * {@link UserGroupInformation} instance.  One of these threads could leave the
+     * {@link javax.security.auth.Subject} in {@link UserGroupInformation} to be cleared or in an unexpected state
+     * while the other thread is attempting to use the {@link javax.security.auth.Subject}, resulting in failed
+     * authentication attempts that would leave the HBase controller service in an unrecoverable state.
+     *
+     * @see SecurityUtil#loginKerberos(Configuration, String, String)
+     */
     @OnEnabled
     public void onEnabled(final ConfigurationContext context) throws InitializationException, IOException, InterruptedException {
         this.connection = createConnection(context);
@@ -186,12 +213,7 @@ public class HBase_1_1_2_ClientService extends AbstractControllerService impleme
             final Admin admin = this.connection.getAdmin();
             if (admin != null) {
                 admin.listTableNames();
-            }
-
-            // if we got here then we have a successful connection, so if we have a ugi then start a renewer
-            if (ugi != null) {
-                final String id = getClass().getSimpleName();
-                renewer = SecurityUtil.startTicketRenewalThread(id, ugi, TICKET_RENEWAL_PERIOD, getLogger());
+                masterAddress = admin.getClusterStatus().getMaster().getHostAndPort();
             }
         }
     }
@@ -256,10 +278,6 @@ public class HBase_1_1_2_ClientService extends AbstractControllerService impleme
 
     @OnDisabled
     public void shutdown() {
-        if (renewer != null) {
-            renewer.stop();
-        }
-
         if (connection != null) {
             try {
                 connection.close();
@@ -338,6 +356,17 @@ public class HBase_1_1_2_ClientService extends AbstractControllerService impleme
     }
 
     @Override
+    public void delete(String tableName, List<byte[]> rowIds) throws IOException {
+        List<Delete> deletes = new ArrayList<>();
+        for (int index = 0; index < rowIds.size(); index++) {
+            deletes.add(new Delete(rowIds.get(index)));
+        }
+        try (final Table table = connection.getTable(TableName.valueOf(tableName))) {
+            table.delete(deletes);
+        }
+    }
+
+    @Override
     public void scan(final String tableName, final Collection<Column> columns, final String filterExpression, final long minTime, final ResultHandler handler)
             throws IOException {
 
@@ -399,6 +428,91 @@ public class HBase_1_1_2_ClientService extends AbstractControllerService impleme
                 handler.handle(rowKey, resultCells);
             }
         }
+    }
+
+    @Override
+    public void scan(final String tableName, final String startRow, final String endRow, String filterExpression,
+            final Long timerangeMin, final Long timerangeMax, final Integer limitRows, final Boolean isReversed,
+            final Collection<Column> columns, final ResultHandler handler) throws IOException {
+
+        try (final Table table = connection.getTable(TableName.valueOf(tableName));
+                final ResultScanner scanner = getResults(table, startRow, endRow, filterExpression, timerangeMin,
+                        timerangeMax, limitRows, isReversed, columns)) {
+
+            int cnt = 0;
+            final int lim = limitRows != null ? limitRows : 0;
+            for (final Result result : scanner) {
+
+                if (lim > 0 && ++cnt > lim){
+                    break;
+                }
+
+                final byte[] rowKey = result.getRow();
+                final Cell[] cells = result.rawCells();
+
+                if (cells == null) {
+                    continue;
+                }
+
+                // convert HBase cells to NiFi cells
+                final ResultCell[] resultCells = new ResultCell[cells.length];
+                for (int i = 0; i < cells.length; i++) {
+                    final Cell cell = cells[i];
+                    final ResultCell resultCell = getResultCell(cell);
+                    resultCells[i] = resultCell;
+                }
+
+                // delegate to the handler
+                handler.handle(rowKey, resultCells);
+            }
+        }
+
+    }
+
+    //
+    protected ResultScanner getResults(final Table table, final String startRow, final String endRow, final String filterExpression, final Long timerangeMin, final Long timerangeMax,
+            final Integer limitRows, final Boolean isReversed, final Collection<Column> columns)  throws IOException {
+        final Scan scan = new Scan();
+        if (!StringUtils.isBlank(startRow)){
+            scan.setStartRow(startRow.getBytes(StandardCharsets.UTF_8));
+        }
+        if (!StringUtils.isBlank(endRow)){
+            scan.setStopRow(   endRow.getBytes(StandardCharsets.UTF_8));
+        }
+
+
+        Filter filter = null;
+        if (columns != null) {
+            for (Column col : columns) {
+                if (col.getQualifier() == null) {
+                    scan.addFamily(col.getFamily());
+                } else {
+                    scan.addColumn(col.getFamily(), col.getQualifier());
+                }
+            }
+        }
+        if (!StringUtils.isBlank(filterExpression)) {
+            ParseFilter parseFilter = new ParseFilter();
+            filter = parseFilter.parseFilterString(filterExpression);
+        }
+        if (filter != null){
+            scan.setFilter(filter);
+        }
+
+        if (timerangeMin != null && timerangeMax != null){
+            scan.setTimeRange(timerangeMin, timerangeMax);
+        }
+
+        // ->>> reserved for HBase v 2 or later
+        //if (limitRows != null && limitRows > 0){
+        //    scan.setLimit(limitRows)
+        //}
+
+        if (isReversed != null){
+            scan.setReversed(isReversed);
+        }
+
+        return table.getScanner(scan);
     }
 
     // protected and extracted into separate method for testing
@@ -525,5 +639,15 @@ public class HBase_1_1_2_ClientService extends AbstractControllerService impleme
     @Override
     public byte[] toBytesBinary(String s) {
         return Bytes.toBytesBinary(s);
+    }
+
+    @Override
+    public String toTransitUri(String tableName, String rowKey) {
+        if (connection == null) {
+            logger.warn("Connection has not been established, could not create a transit URI. Returning null.");
+            return null;
+        }
+        final String transitUriMasterAddress = StringUtils.isEmpty(masterAddress) ? "unknown" : masterAddress;
+        return "hbase://" + transitUriMasterAddress + "/" + tableName + (StringUtils.isEmpty(rowKey) ? "" : "/" + rowKey);
     }
 }

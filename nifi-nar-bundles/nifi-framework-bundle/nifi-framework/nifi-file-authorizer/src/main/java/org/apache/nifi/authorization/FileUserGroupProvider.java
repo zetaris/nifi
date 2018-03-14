@@ -16,43 +16,6 @@
  */
 package org.apache.nifi.authorization;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.nifi.authorization.annotation.AuthorizerContext;
-import org.apache.nifi.authorization.exception.AuthorizationAccessException;
-import org.apache.nifi.authorization.exception.AuthorizerCreationException;
-import org.apache.nifi.authorization.exception.AuthorizerDestructionException;
-import org.apache.nifi.authorization.exception.UninheritableAuthorizationsException;
-import org.apache.nifi.authorization.file.tenants.generated.Groups;
-import org.apache.nifi.authorization.file.tenants.generated.Tenants;
-import org.apache.nifi.authorization.file.tenants.generated.Users;
-import org.apache.nifi.authorization.util.IdentityMapping;
-import org.apache.nifi.authorization.util.IdentityMappingUtil;
-import org.apache.nifi.components.PropertyValue;
-import org.apache.nifi.util.NiFiProperties;
-import org.apache.nifi.util.file.FileUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
-import org.xml.sax.SAXException;
-
-import javax.xml.XMLConstants;
-import javax.xml.bind.JAXBContext;
-import javax.xml.bind.JAXBElement;
-import javax.xml.bind.JAXBException;
-import javax.xml.bind.Marshaller;
-import javax.xml.bind.Unmarshaller;
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
-import javax.xml.stream.XMLOutputFactory;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamWriter;
-import javax.xml.transform.stream.StreamSource;
-import javax.xml.validation.Schema;
-import javax.xml.validation.SchemaFactory;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -70,6 +33,44 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.xml.XMLConstants;
+import javax.xml.bind.JAXBContext;
+import javax.xml.bind.JAXBElement;
+import javax.xml.bind.JAXBException;
+import javax.xml.bind.Marshaller;
+import javax.xml.bind.Unmarshaller;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.stream.XMLOutputFactory;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
+import javax.xml.stream.XMLStreamWriter;
+import javax.xml.transform.stream.StreamSource;
+import javax.xml.validation.Schema;
+import javax.xml.validation.SchemaFactory;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.nifi.authorization.annotation.AuthorizerContext;
+import org.apache.nifi.authorization.exception.AuthorizationAccessException;
+import org.apache.nifi.authorization.exception.AuthorizerCreationException;
+import org.apache.nifi.authorization.exception.AuthorizerDestructionException;
+import org.apache.nifi.authorization.exception.UninheritableAuthorizationsException;
+import org.apache.nifi.authorization.file.tenants.generated.Groups;
+import org.apache.nifi.authorization.file.tenants.generated.Tenants;
+import org.apache.nifi.authorization.file.tenants.generated.Users;
+import org.apache.nifi.authorization.util.IdentityMapping;
+import org.apache.nifi.authorization.util.IdentityMappingUtil;
+import org.apache.nifi.components.PropertyValue;
+import org.apache.nifi.security.xml.XmlUtils;
+import org.apache.nifi.util.NiFiProperties;
+import org.apache.nifi.util.file.FileUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
 
 public class FileUserGroupProvider implements ConfigurableUserGroupProvider {
 
@@ -329,9 +330,6 @@ public class FileUserGroupProvider implements ConfigurableUserGroupProvider {
 
         final UserGroupHolder holder = userGroupHolder.get();
         final Tenants tenants = holder.getTenants();
-
-        // determine that all users in the group exist before doing anything, throw an exception if they don't
-        checkGroupUsers(group, tenants.getUsers().getUser());
 
         // create a new JAXB Group based on the incoming Group
         final org.apache.nifi.authorization.file.tenants.generated.Group jaxbGroup = new org.apache.nifi.authorization.file.tenants.generated.Group();
@@ -600,25 +598,6 @@ public class FileUserGroupProvider implements ConfigurableUserGroupProvider {
         return jaxbUser;
     }
 
-    private Set<org.apache.nifi.authorization.file.tenants.generated.User> checkGroupUsers(final Group group, final List<org.apache.nifi.authorization.file.tenants.generated.User> users) {
-        final Set<org.apache.nifi.authorization.file.tenants.generated.User> jaxbUsers = new HashSet<>();
-        for (String groupUser : group.getUsers()) {
-            boolean found = false;
-            for (org.apache.nifi.authorization.file.tenants.generated.User jaxbUser : users) {
-                if (jaxbUser.getIdentifier().equals(groupUser)) {
-                    jaxbUsers.add(jaxbUser);
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found) {
-                throw new IllegalStateException("Unable to add group because user " + groupUser + " does not exist");
-            }
-        }
-        return jaxbUsers;
-    }
-
     /**
      * Loads the authorizations file and populates the AuthorizationsHolder, only called during start-up.
      *
@@ -665,8 +644,13 @@ public class FileUserGroupProvider implements ConfigurableUserGroupProvider {
         final Unmarshaller unmarshaller = JAXB_TENANTS_CONTEXT.createUnmarshaller();
         unmarshaller.setSchema(tenantsSchema);
 
-        final JAXBElement<Tenants> element = unmarshaller.unmarshal(new StreamSource(tenantsFile), Tenants.class);
-        return element.getValue();
+        try {
+            final XMLStreamReader xsr = XmlUtils.createSafeReader(new StreamSource(tenantsFile));
+            final JAXBElement<Tenants> element = unmarshaller.unmarshal(xsr, Tenants.class);
+            return element.getValue();
+        } catch (XMLStreamException e) {
+            throw new JAXBException("Error unmarshalling tenants", e);
+        }
     }
 
     private void populateInitialUsers(final Tenants tenants) {
@@ -688,11 +672,18 @@ public class FileUserGroupProvider implements ConfigurableUserGroupProvider {
             throw new AuthorizerCreationException("Legacy Authorized Users File '" + legacyAuthorizedUsersFile + "' does not exists");
         }
 
+        XMLStreamReader xsr;
+        try {
+            xsr = XmlUtils.createSafeReader(new StreamSource(authorizedUsersFile));
+        } catch (XMLStreamException e) {
+            throw new AuthorizerCreationException("Error converting the legacy authorizers file", e);
+        }
+
         final Unmarshaller unmarshaller = JAXB_USERS_CONTEXT.createUnmarshaller();
         unmarshaller.setSchema(usersSchema);
 
         final JAXBElement<org.apache.nifi.user.generated.Users> element = unmarshaller.unmarshal(
-                new StreamSource(authorizedUsersFile), org.apache.nifi.user.generated.Users.class);
+                xsr, org.apache.nifi.user.generated.Users.class);
 
         final org.apache.nifi.user.generated.Users users = element.getValue();
         if (users.getUser().isEmpty()) {

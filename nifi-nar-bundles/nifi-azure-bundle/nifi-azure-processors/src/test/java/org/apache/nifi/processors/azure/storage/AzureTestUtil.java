@@ -25,7 +25,7 @@ import java.net.URISyntaxException;
 import java.security.InvalidKeyException;
 import java.util.Properties;
 
-import org.apache.nifi.processors.azure.AzureConstants;
+import org.apache.nifi.processors.azure.storage.utils.AzureStorageUtils;
 import org.apache.nifi.util.file.FileUtils;
 
 import com.microsoft.azure.storage.CloudStorageAccount;
@@ -33,7 +33,7 @@ import com.microsoft.azure.storage.StorageException;
 import com.microsoft.azure.storage.blob.CloudBlobClient;
 import com.microsoft.azure.storage.blob.CloudBlobContainer;
 
-class AzureTestUtil {
+public class AzureTestUtil {
     private static final String CREDENTIALS_FILE = System.getProperty("user.home") + "/azure-credentials.PROPERTIES";
     static final String TEST_CONTAINER_NAME_PREFIX = "nifitest";
 
@@ -58,16 +58,16 @@ class AzureTestUtil {
 
     }
 
-    static String getAccountName() {
+    public static String getAccountName() {
         return CONFIG.getProperty("accountName");
     }
 
-    static String getAccountKey() {
+    public static String getAccountKey() {
         return CONFIG.getProperty("accountKey");
     }
 
-    static CloudBlobContainer getContainer(String containerName) throws InvalidKeyException, URISyntaxException, StorageException {
-        String storageConnectionString = String.format(AzureConstants.FORMAT_DEFAULT_CONNECTION_STRING, getAccountName(), getAccountKey());
+    public static CloudBlobContainer getContainer(String containerName) throws InvalidKeyException, URISyntaxException, StorageException {
+        String storageConnectionString = String.format(AzureStorageUtils.FORMAT_BLOB_CONNECTION_STRING, getAccountName(), getAccountKey());
         CloudStorageAccount storageAccount = CloudStorageAccount.parse(storageConnectionString);
         CloudBlobClient blobClient = storageAccount.createCloudBlobClient();
         return blobClient.getContainerReference(containerName);

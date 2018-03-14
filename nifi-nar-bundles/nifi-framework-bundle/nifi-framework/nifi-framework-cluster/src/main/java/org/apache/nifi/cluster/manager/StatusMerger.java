@@ -19,6 +19,7 @@ package org.apache.nifi.cluster.manager;
 
 import org.apache.nifi.controller.status.RunStatus;
 import org.apache.nifi.controller.status.TransmissionStatus;
+import org.apache.nifi.registry.flow.VersionedFlowState;
 import org.apache.nifi.util.FormatUtils;
 import org.apache.nifi.web.api.dto.CounterDTO;
 import org.apache.nifi.web.api.dto.CountersDTO;
@@ -120,6 +121,11 @@ public class StatusMerger {
         if (targetReadablePermission && !toMergeReadablePermission) {
             target.setId(toMerge.getId());
             target.setName(toMerge.getName());
+        }
+
+        // if the versioned flow state to merge is sync failure allow it to take precedence
+        if (VersionedFlowState.SYNC_FAILURE.name().equals(toMerge.getVersionedFlowState())) {
+            target.setVersionedFlowState(VersionedFlowState.SYNC_FAILURE.name());
         }
 
         target.setBytesIn(target.getBytesIn() + toMerge.getBytesIn());
@@ -361,6 +367,11 @@ public class StatusMerger {
         }
 
         merge(target.getAggregateSnapshot(), targetReadablePermission, toMerge.getAggregateSnapshot(), toMergeReadablePermission);
+
+        // ensure the aggregate snapshot was specified before promoting the runStatus to the status dto
+        if (target.getAggregateSnapshot() != null) {
+            target.setRunStatus(target.getAggregateSnapshot().getRunStatus());
+        }
 
         if (target.getNodeSnapshots() != null) {
             final NodeProcessorStatusSnapshotDTO nodeSnapshot = new NodeProcessorStatusSnapshotDTO();
